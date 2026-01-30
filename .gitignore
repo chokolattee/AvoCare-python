@@ -1,0 +1,101 @@
+# dependencies
+node_modules/
+frontend/node_modules/
+
+# Python virtual environment
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Python cache
+backend/_pycache_/
+backend/**/_pycache_/
+backend/controllers/__pycache__/
+backend/routes/__pycache__/
+backend/middleware/__pycache__/
+backend/utils/__pycache__/
+
+# Expo (Frontend)
+frontend/.expo/
+frontend/dist/
+frontend/web-build/
+frontend/expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+.env
+backend/.env
+frontend/.env
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+frontend/ios/
+frontend/android/
+
+# Backend specific
+backend/data/
+backend/models/train/
+backend/models/*.h5
+backend/models/**/*.h5
+backend/models/checkpoints/
+backend/models/logs/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.appcat
+.appmod
+backend/settings.json
+frontend/settings.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage reports
+coverage/
+*.lcov
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp

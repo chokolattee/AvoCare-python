@@ -1,0 +1,100 @@
+# First install these basic packages
+wheel
+setuptools
+pip
+
+# Core dependencies
+numpy
+scipy
+pandas
+matplotlib
+
+# Scientific computing
+scikit-learn
+h5py
+
+# TensorFlow ecosystem - install these together
+tensorflow
+keras
+tensorboard
+tensorboard-data-server
+protobuf
+flatbuffers
+ml-dtypes
+
+# Google packages
+google-auth
+google-api-python-client
+google-api-core
+google-auth-httplib2
+google-generativeai
+google-ai-generativelanguage
+google-pasta
+googleapis-common-protos
+grpcio
+grpcio-status
+
+# Web and API
+flask
+flask-cors
+werkzeug
+jinja2
+markupsafe
+itsdangerous
+blinker
+click
+requests
+urllib3
+idna
+charset-normalizer
+certifi
+httplib2
+uritemplate
+
+# Data processing
+openpyxl
+pillow
+et-xmlfile
+python-dateutil
+tzdata
+pydantic
+pydantic-core
+annotated-types
+typing-extensions
+typing-inspection
+
+# Development utilities
+rich
+tqdm
+colorama
+termcolor
+pygments
+markdown
+markdown-it-py
+mdurl
+python-dotenv
+wrapt
+opt-einsum
+optree
+namex
+gast
+astunparse
+contourpy
+cycler
+kiwisolver
+packaging
+pyparsing
+six
+threadpoolctl
+joblib
+
+# Security
+cryptography
+cffi
+pycparser
+rsa
+pyrsa
+pymd5
+
+# System libraries
+libclang
