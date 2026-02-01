@@ -10,10 +10,13 @@ import {
   Dimensions,
   Platform,
   Animated,
+  Linking,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import Footer from '../Components/Footer';
 
 type RootStackParamList = {
   Home: undefined;
@@ -33,237 +36,359 @@ interface Props {
   route: HomeScreenRouteProp;
 }
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 64) / 3 - 20;
+const { width, height } = Dimensions.get('window');
+const CARD_WIDTH = width > 768 ? (width - 80) / 3 : (width - 48) / 2;
+
+interface NewsItem {
+  id: number;
+  title: string;
+  source: string;
+  url: string;
+  image?: string;
+  date: string;
+}
 
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
-  // Carousel state
+  // ── Carousel state ──
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
   const heroImages = [
     {
-      uri: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=1200&h=500&fit=crop',
-      title: 'Fresh Avocados',
-      subtitle: 'Premium quality fruit'
+      uri: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=1200&h=800&fit=crop',
+      title: 'Premium Avocados',
+      subtitle: 'Farm-fresh quality, delivered to your doorstep',
     },
     {
-      uri: 'https://images.unsplash.com/photo-1601039641847-7857b994d704?w=1200&h=500&fit=crop',
-      title: 'Avocado Farms',
-      subtitle: 'Sustainable farming practices'
+      uri: 'https://images.unsplash.com/photo-1601039641847-7857b994d704?w=1200&h=800&fit=crop',
+      title: 'Sustainable Farming',
+      subtitle: 'Growing a greener future, one avocado at a time',
     },
     {
-      uri: 'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=1200&h=500&fit=crop',
-      title: 'Avocado Trees',
-      subtitle: 'Healthy growth and care'
+      uri: 'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=1200&h=800&fit=crop',
+      title: 'Healthy Growth',
+      subtitle: 'Expert care for the perfect harvest',
     },
     {
-      uri: 'https://images.unsplash.com/photo-1583663848850-46af132dc08e?w=1200&h=500&fit=crop',
-      title: 'Ripe Avocados',
-      subtitle: 'Ready for harvest'
-    }
+      uri: 'https://images.unsplash.com/photo-1583663848850-46af132dc08e?w=1200&h=800&fit=crop',
+      title: 'Peak Freshness',
+      subtitle: 'Perfectly ripe, perfectly delicious',
+    },
   ];
 
-  // Auto-slide effect - faster transitions
+  // ── News & Updates ──
+  const newsItems: NewsItem[] = [
+    {
+      id: 1,
+      title: 'Philippine avocado exports hit record high in 2025',
+      source: 'Philippine News Agency',
+      url: 'https://www.pna.gov.ph',
+      date: '2025-01-20',
+    },
+    {
+      id: 2,
+      title: 'Local brand champions health-conscious living through avocado products',
+      source: 'GMA Network',
+      url: 'https://www.gmanetwork.com',
+      date: '2025-01-15',
+    },
+    {
+      id: 3,
+      title: 'Avocado farming gains traction as sustainable livelihood in rural PH',
+      source: 'Business Inquirer',
+      url: 'https://business.inquirer.net',
+      date: '2025-01-12',
+    },
+    {
+      id: 4,
+      title: 'Avocado to boost PH economy and wellness industry',
+      source: 'ABS-CBN Lifestyle',
+      url: 'https://www.abs-cbn.com',
+      date: '2025-01-08',
+    },
+  ];
+
+  // ── Auto-slide with fade ──
   useEffect(() => {
     const interval = setInterval(() => {
-      // Fade out
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-      }).start(() => {
-        // Change image
-        setCurrentImageIndex((prevIndex) => 
-          (prevIndex + 1) % heroImages.length
-        );
-        // Fade in
+      Animated.parallel([
         Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 400,
+          toValue: 0,
+          duration: 500,
           useNativeDriver: true,
-        }).start();
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1.1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setCurrentImageIndex((prev) => (prev + 1) % heroImages.length);
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ]).start();
       });
-    }, 3500); // Change image every 3.5 seconds for more dynamic feel
+    }, 5000);
 
     return () => clearInterval(interval);
   }, []);
 
+  // ── Data ──
   const benefits = [
     {
       id: 1,
-      title: "Rich in Nutrients",
-      description: "Packed with vitamins K, E, C and B vitamins essential for body functions",
-      image: "https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=500&h=400&fit=crop"
+      title: 'Rich in Nutrients',
+      description: 'Loaded with vitamins K, E, C, and essential B vitamins for optimal health',
+      image: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=500&h=400&fit=crop',
+      icon: '🥑',
     },
     {
       id: 2,
-      title: "Heart Healthy",
-      description: "Contains monounsaturated fats that support cardiovascular health",
-      image: "https://images.unsplash.com/photo-1590301157890-4810ed352733?w=500&h=400&fit=crop"
+      title: 'Heart Healthy',
+      description: 'Monounsaturated fats support cardiovascular wellness',
+      image: require('../assets/avoheart.jpg'),
+      icon: '❤️',
     },
     {
       id: 3,
-      title: "Improves Digestion",
-      description: "High fiber content promotes healthy digestive system",
-      image: "https://images.unsplash.com/photo-1604084849824-64e96c376dbd?w=500&h=400&fit=crop"
-    }
+      title: 'Aids Digestion',
+      description: 'High fiber content promotes digestive health',
+      image: require('../assets/avodigest.jpg'),
+      icon: '🌿',
+    },
+    {
+      id: 4,
+      title: 'Boosts Immunity',
+      description: 'Antioxidants strengthen your immune system',
+      image: require('../assets/avoimmune.jpg'),
+      icon: '💪',
+    },
   ];
 
   const diseases = [
     {
       id: 1,
-      name: "Anthracnose",
-      description: "Fungal disease causing dark lesions on fruit and leaves",
-      image: "https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?w=500&h=400&fit=crop"
+      name: 'Anthracnose',
+      description: 'Fungal disease causing dark lesions on fruit and leaves',
+      image: require('../assets/avo anthrac.jpg'),
     },
     {
       id: 2,
-      name: "Root Rot",
-      description: "Caused by Phytophthora fungus affecting roots",
-      image: "https://images.unsplash.com/photo-1574856344991-aaa31b6f4ce3?w=500&h=400&fit=crop"
+      name: 'Root Rot',
+      description: 'Phytophthora fungus affecting root systems',
+      image: require('../assets/rootrot.jpg'),
     },
     {
       id: 3,
-      name: "Avocado Scab",
-      description: "Fungal disease creating raised scabby lesions",
-      image: "https://images.unsplash.com/photo-1551334787-21e6bd3ab135?w=500&h=400&fit=crop"
-    }
+      name: 'Avocado Scab',
+      description: 'Creates raised, corky lesions on fruit',
+      image: require('../assets/scab.jpg'),
+    },
   ];
 
   const pests = [
     {
       id: 1,
-      name: "Avocado Thrips",
-      description: "Tiny insects causing scarring on fruit surface",
-      image: "https://images.unsplash.com/photo-1576685801446-1cb49e93e75d?w=500&h=400&fit=crop"
+      name: 'Avocado Thrips',
+      description: 'Tiny insects causing surface scarring',
+      image: require('../assets/thrips.avif'),
     },
     {
       id: 2,
-      name: "Avocado Lace Bug",
-      description: "Sap-sucking insects causing leaf discoloration",
-      image: "https://images.unsplash.com/photo-1582048928148-43b0a1b6b7b4?w=500&h=400&fit=crop"
+      name: 'Lace Bug',
+      description: 'Sap-sucking pest causing discoloration',
+      image: require('../assets/lace bug.webp'),
     },
     {
       id: 3,
-      name: "Spider Mites",
-      description: "Small arachnids that feed on plant sap",
-      image: "https://images.unsplash.com/photo-1516426122078-c23e76319801?w=500&h=400&fit=crop"
-    }
+      name: 'Spider Mites',
+      description: 'Arachnids that feed on plant sap',
+      image: require('../assets/spider.jpg'),
+    },
   ];
 
-  const renderCard = (
-    item: any,
-    type: 'benefit' | 'disease' | 'pest',
-  ) => {
-    return (
-      <View key={item.id} style={[styles.card, { width: CARD_WIDTH }]}>
-        <View style={styles.cardImageWrapper}>
-          <Image source={{ uri: item.image }} style={styles.cardImage} />
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>
-              {type === 'benefit' ? 'HEALTH' : type === 'disease' ? 'DISEASE' : 'PEST'}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.cardBody}>
-          <Text style={styles.cardTitle}>
-            {type === 'benefit' ? item.title : item.name}
-          </Text>
-          <Text style={styles.cardDescription}>
-            {item.description}
-          </Text>
-          <TouchableOpacity style={styles.learnMoreBtn}>
-            <Text style={styles.learnMoreText}>Learn More</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+  // ── Handlers ──
+  const openNewsArticle = (url: string) => {
+    Linking.openURL(url).catch((err) => console.error('Failed to open article:', err));
   };
+
+  // ── Render helpers ──
+  const renderNewsItem = (item: NewsItem) => (
+    <TouchableOpacity
+      key={item.id}
+      style={styles.newsItem}
+      onPress={() => openNewsArticle(item.url)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.newsIconContainer}>
+        <Ionicons name="newspaper-outline" size={22} color="#5d873e" />
+      </View>
+      <View style={styles.newsContent}>
+        <Text style={styles.newsTitle} numberOfLines={2}>{item.title}</Text>
+        <Text style={styles.newsSource}>{item.source}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color="#5d873e" />
+    </TouchableOpacity>
+  );
+
+  const renderCard = (item: any, type: 'benefit' | 'disease' | 'pest') => (
+    <TouchableOpacity
+      key={item.id}
+      style={[styles.card, { width: CARD_WIDTH }]}
+      activeOpacity={0.9}
+    >
+      <View style={styles.cardImageWrapper}>
+        {/* Handle both local and remote images */}
+        {typeof item.image === 'string' ? (
+          <Image source={{ uri: item.image }} style={styles.cardImage} />
+        ) : (
+          <Image source={item.image} style={styles.cardImage} />
+        )}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.7)']}
+          style={styles.cardGradient}
+        />
+        {type === 'benefit' && (
+          <View style={styles.cardIconBadge}>
+            <Text style={styles.cardIcon}>{item.icon}</Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.cardBody}>
+        <Text style={styles.cardTitle}>
+          {type === 'benefit' ? item.title : item.name}
+        </Text>
+        <Text style={styles.cardDescription} numberOfLines={3}>
+          {item.description}
+        </Text>
+        <TouchableOpacity style={styles.learnMoreBtn}>
+          <Text style={styles.learnMoreText}>Learn More</Text>
+          <Ionicons name="arrow-forward" size={14} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
 
   const renderSection = (
     items: any[],
     type: 'benefit' | 'disease' | 'pest',
-    icon: string,
+    icon: any,
     title: string,
     subtitle: string
-  ) => {
-    return (
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionIcon}>{icon}</Text>
-          <Text style={styles.sectionTitle}>{title}</Text>
-          <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+  ) => (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionIconContainer}>
+          <Ionicons name={icon} size={32} color="#5d873e" />
         </View>
-        
-        <View style={styles.horizontalCardsContainer}>
-          {items.map((item) => renderCard(item, type))}
-        </View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionSubtitle}>{subtitle}</Text>
       </View>
-    );
-  };
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.horizontalCardsContainer}
+      >
+        {items.map((item) => renderCard(item, type))}
+      </ScrollView>
+    </View>
+  );
 
+  // ── Main Render ──
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces={true}
-        alwaysBounceVertical={true}
       >
-        {/* Hero Section with Sliding Images */}
+        {/* ─── Hero Carousel ─── */}
         <View style={styles.hero}>
-          {/* Animated Image */}
-          <Animated.View style={[styles.heroImageContainer, { opacity: fadeAnim }]}>
+          <Animated.View
+            style={[
+              styles.heroImageContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }]
+              }
+            ]}
+          >
             <Image
               source={{ uri: heroImages[currentImageIndex].uri }}
               style={styles.heroImage}
               resizeMode="cover"
             />
           </Animated.View>
-          
-          {/* Animated overlay */}
+
           <LinearGradient
-            colors={['rgba(0, 0, 0, 0.3)', 'rgba(0, 0, 0, 0.5)', 'rgba(0, 0, 0, 0.3)']}
+            colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.8)']}
             start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            end={{ x: 0, y: 1 }}
             style={styles.heroOverlay}
           />
-          
+
           <View style={styles.heroContent}>
-            <Text style={styles.heroSubheading}>CALIFORNIA AVOCADOS</Text>
+            <View style={styles.heroBadge}>
+              <Ionicons name="leaf" size={16} color="#8BC34A" />
+              <Text style={styles.heroSubheading}>AVOCARE</Text>
+            </View>
             <Animated.Text style={[styles.heroTitle, { opacity: fadeAnim }]}>
               {heroImages[currentImageIndex].title}
             </Animated.Text>
             <Animated.Text style={[styles.heroDescription, { opacity: fadeAnim }]}>
               {heroImages[currentImageIndex].subtitle}
             </Animated.Text>
-            <TouchableOpacity style={styles.learnMoreButton}>
-              <Text style={styles.learnMoreButtonText}>LEARN MORE</Text>
+            <TouchableOpacity style={styles.learnMoreButton} activeOpacity={0.8}>
+              <Text style={styles.learnMoreButtonText}>Explore Now</Text>
+              <Ionicons name="arrow-forward" size={18} color="#fff" />
             </TouchableOpacity>
           </View>
-          
-          {/* Carousel Indicators */}
+
+          {/* Dot indicators */}
           <View style={styles.carouselIndicators}>
             {heroImages.map((_, index) => (
               <TouchableOpacity
                 key={index}
                 style={[
                   styles.indicator,
-                  currentImageIndex === index && styles.activeIndicator
+                  currentImageIndex === index && styles.activeIndicator,
                 ]}
                 onPress={() => {
-                  Animated.timing(fadeAnim, {
-                    toValue: 0,
-                    duration: 300,
-                    useNativeDriver: true,
-                  }).start(() => {
-                    setCurrentImageIndex(index);
+                  Animated.parallel([
                     Animated.timing(fadeAnim, {
-                      toValue: 1,
+                      toValue: 0,
                       duration: 300,
                       useNativeDriver: true,
-                    }).start();
+                    }),
+                    Animated.timing(scaleAnim, {
+                      toValue: 1.1,
+                      duration: 300,
+                      useNativeDriver: true,
+                    }),
+                  ]).start(() => {
+                    setCurrentImageIndex(index);
+                    Animated.parallel([
+                      Animated.timing(fadeAnim, {
+                        toValue: 1,
+                        duration: 300,
+                        useNativeDriver: true,
+                      }),
+                      Animated.timing(scaleAnim, {
+                        toValue: 1,
+                        duration: 300,
+                        useNativeDriver: true,
+                      }),
+                    ]).start();
                   });
                 }}
               />
@@ -271,55 +396,80 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Health Benefits Section */}
+        {/* ─── News & Updates ─── */}
+        <View style={styles.newsSection}>
+          <View style={styles.newsSectionHeader}>
+            <View style={styles.newsHeaderIcon}>
+              <Ionicons name="megaphone" size={28} color="#5d873e" />
+            </View>
+            <View>
+              <Text style={styles.newsSectionTitle}>Latest News</Text>
+              <Text style={styles.newsSectionSubtitle}>
+                Stay updated with avocado industry trends
+              </Text>
+            </View>
+          </View>
+          <View style={styles.newsContainer}>
+            {newsItems.map((item) => renderNewsItem(item))}
+          </View>
+          <TouchableOpacity style={styles.viewAllNewsButton} activeOpacity={0.7}>
+            <Text style={styles.viewAllNewsText}>View All Articles</Text>
+            <Ionicons name="arrow-forward" size={16} color="#5d873e" />
+          </TouchableOpacity>
+        </View>
+
+        {/* ─── Health Benefits ─── */}
         {renderSection(
-          benefits, 
-          'benefit', 
-          '❤️', 
-          'Avocado Health Benefits',
-          'Discover the amazing nutritional advantages'
+          benefits,
+          'benefit',
+          'fitness',
+          'Health Benefits',
+          'Discover why avocados are a superfood'
         )}
 
-        {/* Diseases Section */}
+        {/* ─── Diseases ─── */}
         {renderSection(
-          diseases, 
-          'disease', 
-          '⚠️', 
-          'Common Avocado Diseases',
-          'Learn to identify and prevent plant diseases'
+          diseases,
+          'disease',
+          'alert-circle',
+          'Common Diseases',
+          'Identify and prevent plant diseases'
         )}
 
-        {/* Pests Section */}
+        {/* ─── Pests ─── */}
         {renderSection(
-          pests, 
-          'pest', 
-          '🐛', 
-          'Pests & Insects',
-          'Identify common pests affecting avocado trees'
+          pests,
+          'pest',
+          'bug',
+          'Pest Management',
+          'Protect your avocado trees'
         )}
 
-        {/* Bottom spacing */}
-        <View style={styles.bottomSpacer} />
+        {/* ─── Footer ─── */}
+        <Footer />
       </ScrollView>
     </SafeAreaView>
   );
 };
 
+// ─────────────────── STYLES ───────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f8f9fa',
   },
   scrollContent: {
-    paddingBottom: Platform.OS === 'ios' ? 20 : 20,
+    paddingBottom: 0,
   },
+
+  // ── Hero ──
   hero: {
-    height: Dimensions.get('window').height * 0.65, // 65% of screen height
-    minHeight: 400,
-    maxHeight: 600,
+    height: height * 0.7,
+    minHeight: 500,
+    maxHeight: 700,
     position: 'relative',
     overflow: 'hidden',
-    marginTop: 0,
+    backgroundColor: '#1a2e1a',
   },
   heroImageContainer: {
     width: '100%',
@@ -329,7 +479,6 @@ const styles = StyleSheet.create({
   heroImage: {
     width: '100%',
     height: '100%',
-    position: 'absolute',
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -338,195 +487,296 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 40,
+    paddingHorizontal: 24,
+    paddingVertical: 50,
     zIndex: 1,
   },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 20,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
   heroSubheading: {
-    fontSize: Platform.OS === 'ios' ? 13 : 12,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: '#fff',
-    textAlign: 'center',
-    marginBottom: 16,
     letterSpacing: 2,
   },
   heroTitle: {
-    fontSize: width < 375 ? 28 : 34,
-    fontWeight: 'bold',
+    fontSize: width < 375 ? 32 : 42,
+    fontWeight: '800',
     color: '#fff',
     textAlign: 'center',
-    marginBottom: 10,
-    lineHeight: width < 375 ? 36 : 42,
+    marginBottom: 12,
+    lineHeight: width < 375 ? 40 : 50,
     paddingHorizontal: 10,
   },
   heroDescription: {
-    fontSize: width < 375 ? 14 : 15,
+    fontSize: width < 375 ? 15 : 17,
     color: '#fff',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
     opacity: 0.95,
     paddingHorizontal: 20,
+    lineHeight: 24,
   },
   learnMoreButton: {
-    backgroundColor: '#D4A574',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#5d873e',
     paddingHorizontal: width < 375 ? 28 : 36,
-    paddingVertical: width < 375 ? 12 : 14,
-    borderRadius: 4,
-    elevation: 3,
+    paddingVertical: width < 375 ? 14 : 16,
+    borderRadius: 30,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    gap: 8,
   },
   learnMoreButtonText: {
     color: '#fff',
-    fontSize: width < 375 ? 13 : 14,
+    fontSize: width < 375 ? 14 : 16,
     fontWeight: '700',
-    letterSpacing: 1.5,
+    letterSpacing: 0.5,
   },
   carouselIndicators: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 30,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     zIndex: 2,
   },
   indicator: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.4)',
   },
   activeIndicator: {
     backgroundColor: '#fff',
-    width: 24,
-    borderRadius: 5,
+    width: 28,
+    borderRadius: 4,
   },
-  section: {
-    marginTop: 32,
+
+  // ── News ──
+  newsSection: {
+    marginTop: 40,
+    marginBottom: 20,
     backgroundColor: '#fff',
-    marginHorizontal: 16,
-    borderRadius: 12,
-    paddingVertical: 24,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-  },
-  sectionHeader: {
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  sectionIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#3d4d3d',
-    marginBottom: 6,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-  },
-  horizontalCardsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    gap: 16,
-    flexWrap: 'wrap',
-  },
-  card: {
-    backgroundColor: '#fff',
+    marginHorizontal: 20,
     borderRadius: 16,
-    overflow: 'hidden',
+    padding: 24,
     elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
+  },
+  newsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+    gap: 16,
+  },
+  newsHeaderIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#f0f7ed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  newsSectionTitle: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#2d3e2d',
+    marginBottom: 4,
+  },
+  newsSectionSubtitle: {
+    fontSize: 14,
+    color: '#666',
+  },
+  newsContainer: {
+    gap: 12,
+  },
+  newsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#5d873e',
+  },
+  newsIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f0f7ed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  newsContent: {
+    flex: 1,
+    marginRight: 12,
+  },
+  newsTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#2d3e2d',
+    marginBottom: 4,
+    lineHeight: 21,
+  },
+  newsSource: {
+    fontSize: 12,
+    color: '#888',
+  },
+  viewAllNewsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    paddingVertical: 14,
+    gap: 8,
+    backgroundColor: '#f0f7ed',
+    borderRadius: 10,
+  },
+  viewAllNewsText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#5d873e',
+  },
+
+  // ── Sections ──
+  section: {
+    marginVertical: 20,
+    paddingVertical: 30,
+  },
+  sectionHeader: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 28,
+  },
+  sectionIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f0f7ed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#2d3e2d',
+    marginBottom: 8,
+  },
+  sectionSubtitle: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+  },
+  horizontalCardsContainer: {
+    paddingHorizontal: 20,
+    gap: 16,
+  },
+
+  // ── Cards ──
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
     marginBottom: 8,
   },
   cardImageWrapper: {
     position: 'relative',
-    height: 140,
+    height: 180,
     width: '100%',
   },
   cardImage: {
     width: '100%',
     height: '100%',
   },
-  badge: {
+  cardGradient: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '50%',
   },
-  badgeText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+  cardIconBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  cardIcon: {
+    fontSize: 24,
   },
   cardBody: {
-    padding: 12,
-    flex: 1,
+    padding: 16,
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#2d3e2d',
-    marginBottom: 6,
-    textAlign: 'center',
+    marginBottom: 8,
   },
   cardDescription: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#5a5a5a',
-    lineHeight: 18,
-    marginBottom: 12,
-    textAlign: 'center',
-    flex: 1,
+    lineHeight: 20,
+    marginBottom: 16,
   },
   learnMoreBtn: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#5d873e',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    gap: 6,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
-    shadowRadius: 2,
-    marginTop: 'auto',
+    shadowRadius: 3,
   },
   learnMoreText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  bottomSpacer: {
-    height: 20,
   },
 });
 

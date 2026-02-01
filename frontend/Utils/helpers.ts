@@ -10,6 +10,7 @@ interface AuthData {
     token?: string;
     user?: User;
     accessToken?: string;  // if your API uses this
+    jwt?: string;  // if your API uses this
     data?: {
         token: string;
         user: User;
@@ -20,12 +21,19 @@ interface AuthData {
 export const authenticate = (data: AuthData, next: () => void): void => {
     if (typeof window !== 'undefined') {
         // Handle different response structures
-        const token = data.token || data.accessToken || data.data?.token;
+        const token = data.token || data.accessToken || data.jwt || data.data?.token;
         const user = data.user || data.data?.user;
         
         if (token && user) {
+            // Store token in multiple formats for compatibility
             sessionStorage.setItem('token', token);
+            sessionStorage.setItem('jwt', token);  // Some parts of app might use 'jwt'
             sessionStorage.setItem('user', JSON.stringify(user));
+            
+            // Store userId separately for easier access
+            if (user.id) {
+                sessionStorage.setItem('userId', user.id);
+            }
         }
     }
     next();
@@ -50,15 +58,23 @@ export const getUser = (): User | false => {
 
 export const logout = (next: () => void): void => {
     if (typeof window !== 'undefined') {
+        // Clear ALL authentication-related items to prevent bugs
         sessionStorage.removeItem('token');
+        sessionStorage.removeItem('jwt');
         sessionStorage.removeItem('user');
+        sessionStorage.removeItem('userId');
+        sessionStorage.removeItem('accessToken');  // Just in case
+        
+        // Alternative: Clear all sessionStorage (use with caution)
+        // sessionStorage.clear();
     }
     next();
 };
 
 export const getToken = (): string | false => {
     if (typeof window !== 'undefined') {
-        const token = sessionStorage.getItem('token');
+        // Check both 'token' and 'jwt' for compatibility
+        const token = sessionStorage.getItem('token') || sessionStorage.getItem('jwt');
         if (token && token !== 'undefined' && token !== 'null') {
             return token.trim();
         } else {
@@ -66,6 +82,26 @@ export const getToken = (): string | false => {
         }
     }
     return false;
+};
+
+export const getUserId = (): string | false => {
+    if (typeof window !== 'undefined') {
+        const userId = sessionStorage.getItem('userId');
+        if (userId && userId !== 'undefined' && userId !== 'null') {
+            return userId.trim();
+        } else {
+            // Fallback: try to get from user object
+            const user = getUser();
+            return user !== false && user.id ? user.id : false;
+        }
+    }
+    return false;
+};
+
+export const isAuthenticated = (): boolean => {
+    const token = getToken();
+    const user = getUser();
+    return token !== false && user !== false;
 };
 
 export const isAdmin = (): boolean => {

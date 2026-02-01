@@ -13,6 +13,7 @@ import {
   Alert,
   Dimensions,
   Animated,
+  Keyboard,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
@@ -134,6 +135,7 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
   const [currentMessage, setCurrentMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Backend API URL - Update this to match your server
@@ -154,14 +156,35 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
     fetchSuggestions();
   }, []);
 
-  // Auto-scroll when messages update
+  // Keyboard listeners
   useEffect(() => {
-    if (chatMessages.length > 0) {
+    const keyboardWillShow = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const keyboardWillHide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardWillShow.remove();
+      keyboardWillHide.remove();
+    };
+  }, []);
+
+  // Auto-scroll when messages update or keyboard appears
+  useEffect(() => {
+    if (chatMessages.length > 0 || isTyping) {
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [chatMessages, isTyping]);
+  }, [chatMessages, isTyping, keyboardHeight]);
 
   const fetchSuggestions = async () => {
     try {
@@ -272,6 +295,10 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleQuickQuestion = (question: string) => {
     setCurrentMessage(question);
+    // Auto-focus input after setting question
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
   };
 
   const clearChat = () => {
@@ -357,19 +384,20 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
         </ScrollView>
       </View>
 
-      {/* Chat Messages */}
+      {/* Chat Container with KeyboardAvoidingView */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.chatContent}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.chatContainer}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
+        {/* Chat Messages - Scrollable */}
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
-          scrollEventThrottle={16}
+          keyboardDismissMode="on-drag"
         >
           {chatMessages.map((message) => (
             <View
@@ -440,9 +468,12 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
               </View>
             </View>
           )}
+          
+          {/* Bottom padding for better scrolling */}
+          <View style={{ height: 20 }} />
         </ScrollView>
 
-        {/* Input Area - Always visible */}
+        {/* Input Area - ALWAYS VISIBLE at bottom */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.messageInput}
@@ -570,7 +601,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flexShrink: 1,
   },
-  chatContent: {
+  chatContainer: {
     flex: 1,
   },
   messagesContainer: {
@@ -686,7 +717,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 12,
     paddingTop: 10,
-    paddingBottom: 10,
+    paddingBottom: Platform.OS === 'ios' ? 10 : 10,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
@@ -695,7 +726,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    minHeight: 64,
   },
   messageInput: {
     flex: 1,
@@ -724,6 +754,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
+    marginBottom: 2,
   },
   sendButtonDisabled: {
     backgroundColor: '#e8e8e8',

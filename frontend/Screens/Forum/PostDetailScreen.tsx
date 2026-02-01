@@ -18,6 +18,7 @@ import { RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL as BASE_URL } from '../../config/api';
+
 // ---------------------------------------------------------------------------
 // Navigation types
 // ---------------------------------------------------------------------------
@@ -58,7 +59,7 @@ interface PostData {
   likes: number;
   comments_count: number;
   created_at: string;
-  updated_at?: string; // Added for edit tracking
+  updated_at?: string;
   comments: CommentData[];
 }
 
@@ -68,77 +69,56 @@ interface PostData {
 const FORUM_URL = `${BASE_URL}/api/forum`;
 
 // ---------------------------------------------------------------------------
-// Helper - IMPROVED with better time formatting
+// Helper functions
 // ---------------------------------------------------------------------------
 function timeAgo(dateStr: string): string {
   try {
-    // Parse the ISO date string
     const date = new Date(dateStr);
-    
-    // Check if date is valid
-    if (isNaN(date.getTime())) {
-      return 'recently';
-    }
+    if (isNaN(date.getTime())) return 'recently';
     
     const now = new Date();
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     
-    // Handle future dates (shouldn't happen, but just in case)
-    if (seconds < 0) {
-      return 'just now';
-    }
-    
-    // Less than 1 minute
+    if (seconds < 0) return 'just now';
     if (seconds < 60) return 'just now';
     
-    // Less than 1 hour - show minutes
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) {
       return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
     }
     
-    // Less than 24 hours - show hours
     const hours = Math.floor(minutes / 60);
     if (hours < 24) {
       return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
     }
     
-    // Less than 7 days - show days
     const days = Math.floor(hours / 24);
     if (days < 7) {
       return days === 1 ? '1 day ago' : `${days} days ago`;
     }
     
-    // Less than 30 days - show weeks
     const weeks = Math.floor(days / 7);
     if (weeks < 4) {
       return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
     }
     
-    // Less than 365 days - show date (e.g., "Jan 15")
     if (days < 365) {
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       return `${months[date.getMonth()]} ${date.getDate()}`;
     }
     
-    // More than 365 days - show full date with year (e.g., "Jan 15, 2024")
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
   } catch (error) {
-    console.error('Error parsing date:', dateStr, error);
     return 'recently';
   }
 }
 
-// Check if post was edited (updated_at is different from created_at)
 function wasEdited(createdAt: string, updatedAt?: string): boolean {
   if (!updatedAt) return false;
-  
   try {
     const created = new Date(createdAt).getTime();
     const updated = new Date(updatedAt).getTime();
-    
-    // Consider edited if difference is more than 1 second
     return Math.abs(updated - created) > 1000;
   } catch {
     return false;
@@ -156,6 +136,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
 
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
@@ -164,18 +145,58 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
 
-  // Get current user ID
+  // Get current user ID and login status
   useEffect(() => {
-    const getUserId = async () => {
+    const getUserInfo = async () => {
       try {
         const userId = await AsyncStorage.getItem('userId');
+        const token = await AsyncStorage.getItem('token');
+        const isUserLoggedIn = !!token && !!userId;
+        
         setCurrentUserId(userId);
+        setIsLoggedIn(isUserLoggedIn);
+        
+        // Clear any stale state if not logged in
+        if (!isUserLoggedIn) {
+          setCurrentUserId(null);
+          setLiked(false);
+        }
       } catch (err) {
-        console.error('Failed to get user ID:', err);
+        console.error('Failed to get user info:', err);
+        setIsLoggedIn(false);
+        setCurrentUserId(null);
       }
     };
-    getUserId();
+    getUserInfo();
   }, []);
+
+  // Re-check login status when screen is focused
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      const checkLoginStatus = async () => {
+        try {
+          const token = await AsyncStorage.getItem('token');
+          const userId = await AsyncStorage.getItem('userId');
+          const isUserLoggedIn = !!token && !!userId;
+          
+          setIsLoggedIn(isUserLoggedIn);
+          setCurrentUserId(userId);
+          
+          // Clear any local state if logged out
+          if (!isUserLoggedIn) {
+            setCurrentUserId(null);
+            setLiked(false);
+          }
+        } catch (error) {
+          console.error('Error checking login status:', error);
+          setIsLoggedIn(false);
+          setCurrentUserId(null);
+        }
+      };
+      checkLoginStatus();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // -----------------------------------------------------------------------
   // Fetch the single post
@@ -218,7 +239,10 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   // Delete Post
   // -----------------------------------------------------------------------
   const handleDeletePost = async () => {
-    if (!post) return;
+    if (!post || !isLoggedIn) {
+      Alert.alert('Login Required', 'Please login to delete posts.');
+      return;
+    }
 
     Alert.alert(
       'Delete Post',
@@ -265,9 +289,14 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   // Like / Unlike
   // -----------------------------------------------------------------------
   const handleLike = async () => {
+    if (!isLoggedIn) {
+      Alert.alert('Login Required', 'Please login to like posts.');
+      return;
+    }
+
     const token = await AsyncStorage.getItem('token');
     if (!token) {
-      Alert.alert('Auth', 'You must be logged in to like a post.');
+      Alert.alert('Login Required', 'Please login to like posts.');
       return;
     }
 
@@ -297,11 +326,16 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   // Add Comment
   // -----------------------------------------------------------------------
   const handleAddComment = async () => {
+    if (!isLoggedIn) {
+      Alert.alert('Login Required', 'Please login to add comments.');
+      return;
+    }
+
     if (!commentText.trim()) return;
 
     const token = await AsyncStorage.getItem('token');
     if (!token) {
-      Alert.alert('Auth', 'You must be logged in to comment.');
+      Alert.alert('Login Required', 'Please login to add comments.');
       return;
     }
 
@@ -322,6 +356,13 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         return;
       }
 
+      const responseData = await res.json();
+      
+      // Show censorship notification if comment was censored
+      if (responseData.censored) {
+        Alert.alert('Notice', responseData.message || 'Comment added with inappropriate words censored');
+      }
+
       setCommentText('');
       await fetchPost();
     } catch (err) {
@@ -336,6 +377,10 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   // Edit Comment
   // -----------------------------------------------------------------------
   const handleEditComment = (commentId: string, currentContent: string) => {
+    if (!isLoggedIn) {
+      Alert.alert('Login Required', 'Please login to edit comments.');
+      return;
+    }
     setEditingCommentId(commentId);
     setEditCommentText(currentContent);
   };
@@ -362,6 +407,13 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         return;
       }
 
+      const responseData = await res.json();
+      
+      // Show censorship notification if comment was censored
+      if (responseData.censored) {
+        Alert.alert('Notice', responseData.message || 'Comment updated with inappropriate words censored');
+      }
+
       setEditingCommentId(null);
       setEditCommentText('');
       await fetchPost();
@@ -380,6 +432,11 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   // Delete Comment
   // -----------------------------------------------------------------------
   const handleDeleteComment = async (commentId: string) => {
+    if (!isLoggedIn) {
+      Alert.alert('Login Required', 'Please login to delete comments.');
+      return;
+    }
+
     Alert.alert('Delete Comment', 'Are you sure you want to delete this comment?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -416,9 +473,9 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   // -----------------------------------------------------------------------
   // Check ownership
   // -----------------------------------------------------------------------
-  const isOwnPost = post && currentUserId !== null && post.user_id === currentUserId;
+  const isOwnPost = isLoggedIn && post && currentUserId !== null && post.user_id === currentUserId;
   const isOwnComment = (comment: CommentData): boolean => {
-    return currentUserId !== null && comment.author_id === currentUserId;
+    return isLoggedIn && currentUserId !== null && comment.author_id === currentUserId;
   };
 
   // -----------------------------------------------------------------------
@@ -450,7 +507,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
           <Text style={styles.headerTitle} numberOfLines={1}>
             {post.title}
           </Text>
-          {/* Edit/Delete for own posts */}
+          {/* Edit/Delete for own posts - ONLY IF LOGGED IN */}
           {isOwnPost ? (
             <View style={styles.headerActions}>
               <TouchableOpacity
@@ -509,13 +566,22 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
           <Text style={styles.postContent}>{post.content}</Text>
 
           {/* Like button */}
-          <TouchableOpacity style={styles.likeRow} onPress={handleLike}>
+          <TouchableOpacity 
+            style={styles.likeRow} 
+            onPress={handleLike}
+            disabled={!isLoggedIn}
+          >
             <Ionicons
               name={liked ? 'thumbs-up' : 'thumbs-up-outline'}
               size={22}
               color={liked ? '#e74c3c' : '#5d873e'}
+              style={!isLoggedIn && styles.disabledIcon}
             />
-            <Text style={[styles.likeText, liked && styles.likeTextActive]}>
+            <Text style={[
+              styles.likeText, 
+              liked && styles.likeTextActive,
+              !isLoggedIn && styles.disabledText
+            ]}>
               {likeCount} {likeCount === 1 ? 'Like' : 'Likes'}
             </Text>
           </TouchableOpacity>
@@ -527,7 +593,9 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
           {/* Comment list */}
           {post.comments.length === 0 ? (
-            <Text style={styles.noComments}>Be the first to comment!</Text>
+            <Text style={styles.noComments}>
+              {isLoggedIn ? 'Be the first to comment!' : 'No comments yet. Login to add one!'}
+            </Text>
           ) : (
             post.comments.map((comment, index) => {
               const commentId = comment.id || `${index}`;
@@ -542,7 +610,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                     <Text style={styles.commentAuthor}>{comment.author_name}</Text>
                     <Text style={styles.commentTime}>{timeAgo(comment.created_at)}</Text>
 
-                    {/* Edit/Delete for own comments */}
+                    {/* Edit/Delete for own comments - ONLY IF LOGGED IN */}
                     {isOwnComment(comment) && !isEditing && (
                       <View style={styles.commentActions}>
                         <TouchableOpacity
@@ -591,31 +659,49 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             })
           )}
 
+          {/* Login prompt if not logged in */}
+          {!isLoggedIn && (
+            <View style={styles.loginPrompt}>
+              <Ionicons name="lock-closed-outline" size={32} color="#5d873e" />
+              <Text style={styles.loginPromptText}>
+                Login to like and comment on posts
+              </Text>
+              <TouchableOpacity
+                style={styles.loginPromptButton}
+                onPress={() => navigation.getParent()?.navigate('AuthScreen' as never)}
+              >
+                <Text style={styles.loginPromptButtonText}>Login Now</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <View style={{ height: 16 }} />
         </ScrollView>
 
-        {/* Add Comment Input */}
-        <View style={styles.commentInputContainer}>
-          <TextInput
-            style={styles.commentInput}
-            placeholder="Write a comment…"
-            placeholderTextColor="#999"
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline
-          />
-          <TouchableOpacity
-            style={[styles.sendButton, submittingComment && styles.sendButtonDisabled]}
-            onPress={handleAddComment}
-            disabled={submittingComment || !commentText.trim()}
-          >
-            {submittingComment ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="send" size={20} color="#fff" />
-            )}
-          </TouchableOpacity>
-        </View>
+        {/* Add Comment Input - ONLY IF LOGGED IN */}
+        {isLoggedIn && (
+          <View style={styles.commentInputContainer}>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Write a comment…"
+              placeholderTextColor="#999"
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, submittingComment && styles.sendButtonDisabled]}
+              onPress={handleAddComment}
+              disabled={submittingComment || !commentText.trim()}
+            >
+              {submittingComment ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="send" size={20} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -681,6 +767,8 @@ const styles = StyleSheet.create({
   likeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   likeText: { fontSize: 15, color: '#5d873e', fontWeight: '600', marginLeft: 8 },
   likeTextActive: { color: '#e74c3c' },
+  disabledIcon: { opacity: 0.5 },
+  disabledText: { opacity: 0.5 },
 
   divider: { height: 1, backgroundColor: '#e8e8e8', marginBottom: 20 },
 
@@ -737,6 +825,35 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   cancelEditButtonText: { color: '#666', fontSize: 13, fontWeight: '600' },
+
+  loginPrompt: {
+    backgroundColor: '#fff',
+    marginTop: 16,
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#5d873e',
+  },
+  loginPromptText: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 12,
+    marginBottom: 16,
+    lineHeight: 22,
+  },
+  loginPromptButton: {
+    backgroundColor: '#5d873e',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  loginPromptButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 
   commentInputContainer: {
     flexDirection: 'row',

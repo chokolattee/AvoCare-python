@@ -114,6 +114,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
   const [likedSet, setLikedSet] = useState<Set<string>>(new Set());
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   
   // DELETE CONFIRMATION MODAL STATE
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -123,9 +124,20 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
     const getUserId = async () => {
       try {
         const userId = await AsyncStorage.getItem('userId');
+        const token = await AsyncStorage.getItem('token');
+        const isUserLoggedIn = !!token && !!userId;
+        
         setCurrentUserId(userId);
+        setIsLoggedIn(isUserLoggedIn);
+        
+        // Clear any stale state if not logged in
+        if (!isUserLoggedIn) {
+          setCurrentUserId(null);
+        }
       } catch (err) {
         console.error('Failed to get user ID:', err);
+        setIsLoggedIn(false);
+        setCurrentUserId(null);
       }
     };
     getUserId();
@@ -151,12 +163,39 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => { fetchPosts(); });
+    const unsubscribe = navigation.addListener('focus', () => { 
+      fetchPosts();
+      // Re-check login status when screen is focused - CRITICAL for logout detection
+      const checkLoginStatus = async () => {
+        try {
+          const token = await AsyncStorage.getItem('token');
+          const userId = await AsyncStorage.getItem('userId');
+          const isUserLoggedIn = !!token && !!userId;
+          
+          setIsLoggedIn(isUserLoggedIn);
+          setCurrentUserId(userId);
+          
+          // If user logged out, clear any local state
+          if (!isUserLoggedIn) {
+            setLikedSet(new Set());
+          }
+        } catch (error) {
+          console.error('Error checking login status:', error);
+          setIsLoggedIn(false);
+          setCurrentUserId(null);
+        }
+      };
+      checkLoginStatus();
+    });
     return unsubscribe;
   }, [navigation, fetchPosts]);
 
   // Show the delete confirmation modal
   const handleDeletePost = (postId: string, postTitle: string) => {
+    if (!isLoggedIn) {
+      Alert.alert('Login Required', 'Please login to delete posts.');
+      return;
+    }
     setPostToDelete({ id: postId, title: postTitle });
     setShowDeleteModal(true);
   };
@@ -212,7 +251,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
   const handleLike = async (postId: string) => {
     const token = await AsyncStorage.getItem('token');
     if (!token) {
-      console.warn('Not logged in – cannot like.');
+      Alert.alert('Login Required', 'Please login to like posts.');
       return;
     }
     const alreadyLiked = likedSet.has(postId);
@@ -249,6 +288,24 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  const handleCreatePost = () => {
+    if (!isLoggedIn) {
+      Alert.alert(
+        'Login Required', 
+        'Please login to create posts.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Login', 
+            onPress: () => navigation.getParent()?.navigate('AuthScreen' as never)
+          }
+        ]
+      );
+      return;
+    }
+    navigation.navigate('CreatePost');
+  };
+
   const filteredPosts = posts.filter((post) => {
     const matchesCategory = selectedCategory === 'all' || post.category === selectedCategory;
     const matchesSearch =
@@ -262,7 +319,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const isOwnPost = (post: ForumPost): boolean => {
-    return currentUserId !== null && post.user_id === currentUserId;
+    return isLoggedIn && currentUserId !== null && post.user_id === currentUserId;
   };
 
   return (
@@ -318,10 +375,12 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.createPostContainer}>
           <TouchableOpacity
             style={styles.createPostButton}
-            onPress={() => navigation.navigate('CreatePost')}
+            onPress={handleCreatePost}
           >
             <Ionicons name="add-circle" size={20} color="#fff" />
-            <Text style={styles.createPostText}>Create New Post</Text>
+            <Text style={styles.createPostText}>
+              {isLoggedIn ? 'Create New Post' : 'Login to Create Post'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -353,6 +412,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
                         </View>
                       </View>
 
+                      {/* Only show edit/delete buttons if user is logged in AND owns the post */}
                       {isOwnPost(post) && (
                         <View style={styles.postActions}>
                           <TouchableOpacity
@@ -394,13 +454,20 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
                     </TouchableOpacity>
 
                     <View style={styles.postFooter}>
-                      <TouchableOpacity style={styles.actionItem} onPress={() => handleLike(post.id)}>
+                      <TouchableOpacity 
+                        style={styles.actionItem} 
+                        onPress={() => handleLike(post.id)}
+                        disabled={!isLoggedIn}
+                      >
                         <Ionicons
                           name={likedSet.has(post.id) ? 'thumbs-up' : 'thumbs-up-outline'}
                           size={20}
                           color={likedSet.has(post.id) ? '#e74c3c' : '#5d873e'}
+                          style={!isLoggedIn && styles.disabledIcon}
                         />
-                        <Text style={styles.actionText}>{likeCounts[post.id] ?? post.likes}</Text>
+                        <Text style={[styles.actionText, !isLoggedIn && styles.disabledText]}>
+                          {likeCounts[post.id] ?? post.likes}
+                        </Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -415,6 +482,21 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
                 );
               })
             )}
+          </View>
+        )}
+
+        {!isLoggedIn && (
+          <View style={styles.loginPrompt}>
+            <Ionicons name="information-circle-outline" size={32} color="#5d873e" />
+            <Text style={styles.loginPromptText}>
+              Login to like posts, comment, and create your own posts
+            </Text>
+            <TouchableOpacity
+              style={styles.loginPromptButton}
+              onPress={() => navigation.getParent()?.navigate('AuthScreen' as never)}
+            >
+              <Text style={styles.loginPromptButtonText}>Login Now</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -587,7 +669,38 @@ const styles = StyleSheet.create({
   },
   actionItem: { flexDirection: 'row', alignItems: 'center', marginRight: 20 },
   actionText: { fontSize: 14, color: '#5d873e', fontWeight: '600', marginLeft: 6 },
+  disabledIcon: { opacity: 0.5 },
+  disabledText: { opacity: 0.5 },
   emptyText: { textAlign: 'center', color: '#999', marginTop: 40, fontSize: 15 },
+  loginPrompt: {
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#5d873e',
+  },
+  loginPromptText: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 12,
+    marginBottom: 16,
+    lineHeight: 22,
+  },
+  loginPromptButton: {
+    backgroundColor: '#5d873e',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  loginPromptButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   bottomSpacer: { height: 100 },
   chatbotButton: {
     position: 'absolute',
