@@ -16,6 +16,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL as BASE_URL } from '../../config/api';
+
 // ---------------------------------------------------------------------------
 // Navigation types - UPDATED to match CommunityStack
 // ---------------------------------------------------------------------------
@@ -77,7 +78,7 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   // -----------------------------------------------------------------------
-  // Submit - IMPROVED with better user feedback
+  // Submit - AUTO-CENSORING with user notification
   // -----------------------------------------------------------------------
   const handleSubmit = async () => {
     // Validation
@@ -142,6 +143,8 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
         throw new Error(errorData.error || errorData.message || `Server error: ${res.status}`);
       }
 
+      const responseData = await res.json();
+
       // Success! Clear form and navigate back
       setTitle('');
       setContent('');
@@ -151,13 +154,21 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
       // Navigate back immediately - the focus listener will refresh
       navigation.goBack();
       
-      // Show success message after a brief delay so user sees it on the Community screen
+      // Show success message - different message if content was censored
       setTimeout(() => {
-        Alert.alert(
-          '✅ Success!', 
-          'Your post has been published to the community.',
-          [{ text: 'OK' }]
-        );
+        if (responseData.censored) {
+          Alert.alert(
+            '✅ Post Published!', 
+            'Your post has been published. Note: Some inappropriate words were automatically replaced with asterisks (***) to maintain a respectful community.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert(
+            '✅ Success!', 
+            'Your post has been published to the community.',
+            [{ text: 'OK' }]
+          );
+        }
       }, 300);
       
     } catch (err) {
@@ -166,9 +177,7 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
       if (err instanceof TypeError) {
         Alert.alert(
           'Connection Error', 
-          'Could not connect to the server. Please check:\n' +
-          '• Backend is running\n' +
-          '• Network connection is active'
+          'Could not connect to the server. Please check your network connection.'
         );
       } else {
         Alert.alert(
@@ -301,6 +310,8 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
         {/* Help Text */}
         <Text style={styles.helpText}>
           Your post will be visible to all community members. Be respectful and helpful! 🌱
+          {'\n'}
+          Note: Inappropriate language will be automatically censored.
         </Text>
       </ScrollView>
     </SafeAreaView>

@@ -1,9 +1,11 @@
 from flask import Blueprint, request, jsonify
+from datetime import datetime
 import cloudinary
 from cloudinary import uploader as cloudinary_uploader
 from models.post import Post, Comment
 from models.user import User
 from middleware.auth_middleware import token_required
+from utils.profanity_filter import censor_profanity, contains_profanity
 
 forum_routes = Blueprint('forum_routes', __name__)
 
@@ -34,13 +36,14 @@ def get_posts():
             'imageUrl': post.image_url if post.image_url else None,
             'likes': post.like_count,
             'comments_count': len(post.comments),
-            'created_at': post.created_at.isoformat() if post.created_at else None,
+            'created_at': post.created_at.isoformat() + 'Z' if post.created_at else None,
+            'updated_at': (post.updated_at.isoformat() + 'Z' if hasattr(post, 'updated_at') and post.updated_at else (post.created_at.isoformat() + 'Z' if post.created_at else None)),
             'comments': [{
                 'id': str(c.id) if hasattr(c, 'id') and c.id else None,
                 'content': c.content,
                 'author_name': c.author_name,
                 'author_id': c.author_id if hasattr(c, 'author_id') else None,
-                'created_at': c.created_at.isoformat() if c.created_at else None,
+                'created_at': c.created_at.isoformat() + 'Z' if c.created_at else None,
             } for c in post.comments]
         })
     return jsonify(output), 200
@@ -50,7 +53,7 @@ def get_posts():
 @forum_routes.route('/', methods=['POST', 'OPTIONS'], strict_slashes=False)
 @token_required
 def create_post():
-    """Create a new forum post. Handles both /api/forum and /api/forum/"""
+    """Create a new forum post with auto-censoring. Handles both /api/forum and /api/forum/"""
     
     # Handle CORS preflight (before auth)
     if request.method == 'OPTIONS':
@@ -78,6 +81,23 @@ def create_post():
         return jsonify({'error': 'title and content are required'}), 400
 
     # ---------------------------------------------------------------------------
+    # AUTO-CENSOR PROFANITY - Automatically clean the text
+    # ---------------------------------------------------------------------------
+    was_censored = False
+    original_title = title
+    original_content = content
+    
+    # Censor title if it contains profanity
+    if contains_profanity(title):
+        title = censor_profanity(title)
+        was_censored = True
+    
+    # Censor content if it contains profanity
+    if contains_profanity(content):
+        content = censor_profanity(content)
+        was_censored = True
+
+    # ---------------------------------------------------------------------------
     # Upload image to Cloudinary (if provided)
     # ---------------------------------------------------------------------------
     image_url = None
@@ -94,7 +114,7 @@ def create_post():
             return jsonify({'error': 'Image upload failed'}), 500
 
     # ---------------------------------------------------------------------------
-    # Create post
+    # Create post with censored content
     # ---------------------------------------------------------------------------
     author_name = getattr(user, 'name', 'Anonymous')
 
@@ -108,7 +128,8 @@ def create_post():
     )
     new_post.save()
     
-    return jsonify({
+    # Build response
+    response_data = {
         'message': 'Post created',
         'post': {
             'id': str(new_post.id),
@@ -120,16 +141,23 @@ def create_post():
             'imageUrl': new_post.image_url,
             'likes': 0,
             'comments_count': 0,
-            'created_at': new_post.created_at.isoformat() if new_post.created_at else None,
+            'created_at': new_post.created_at.isoformat() + 'Z' if new_post.created_at else None,
             'comments': []
         }
-    }), 201
+    }
+    
+    # Notify user if content was censored
+    if was_censored:
+        response_data['censored'] = True
+        response_data['message'] = 'Post created with inappropriate words censored'
+    
+    return jsonify(response_data), 201
 
 # --- 3. Update a Post ---
 @forum_routes.route('/<post_id>', methods=['PUT', 'OPTIONS'], strict_slashes=False)
 @token_required
 def update_post(post_id):
-    """Update an existing post (only by author)"""
+    """Update an existing post with auto-censoring (only by author)"""
     
     # Handle CORS preflight
     if request.method == 'OPTIONS':
@@ -157,6 +185,7 @@ def update_post(post_id):
         category     = data.get('category')
         remove_image = data.get('removeImage', False)
         image_file   = None
+        
     else:
         # multipart/form-data (new image attached)
         title        = request.form.get('title')
@@ -164,6 +193,19 @@ def update_post(post_id):
         category     = request.form.get('category')
         remove_image = False
         image_file   = request.files.get('image')
+
+    # ---------------------------------------------------------------------------
+    # AUTO-CENSOR PROFANITY in updated fields
+    # ---------------------------------------------------------------------------
+    was_censored = False
+    
+    if title and contains_profanity(title):
+        title = censor_profanity(title)
+        was_censored = True
+    
+    if content and contains_profanity(content):
+        content = censor_profanity(content)
+        was_censored = True
 
     # ---------------------------------------------------------------------------
     # Upload new image to Cloudinary (if provided)
@@ -184,7 +226,7 @@ def update_post(post_id):
         post.image_url = None
 
     # ---------------------------------------------------------------------------
-    # Update text fields
+    # Update text fields with censored content
     # ---------------------------------------------------------------------------
     if title:
         post.title = title
@@ -193,9 +235,12 @@ def update_post(post_id):
     if category:
         post.category = category
     
+    # Update the timestamp
+    post.updated_at = datetime.utcnow()
+    
     post.save()
     
-    return jsonify({
+    response_data = {
         'message': 'Post updated successfully',
         'post': {
             'id': str(post.id),
@@ -204,7 +249,14 @@ def update_post(post_id):
             'category': post.category,
             'imageUrl': post.image_url
         }
-    }), 200
+    }
+    
+    # Notify user if content was censored
+    if was_censored:
+        response_data['censored'] = True
+        response_data['message'] = 'Post updated with inappropriate words censored'
+    
+    return jsonify(response_data), 200
 
 # --- 4. Delete a Post ---
 @forum_routes.route('/<post_id>', methods=['DELETE', 'OPTIONS'], strict_slashes=False)
@@ -260,7 +312,7 @@ def like_post(post_id):
 @forum_routes.route('/<post_id>/comment', methods=['POST', 'OPTIONS'], strict_slashes=False)
 @token_required
 def add_comment(post_id):
-    """Add a comment to a post"""
+    """Add a comment to a post with auto-censoring"""
     
     # Handle CORS preflight
     if request.method == 'OPTIONS':
@@ -276,8 +328,18 @@ def add_comment(post_id):
     if not data or not data.get('content'):
         return jsonify({'error': 'content is required'}), 400
 
+    comment_content = data.get('content')
+    
+    # ---------------------------------------------------------------------------
+    # AUTO-CENSOR PROFANITY in comment
+    # ---------------------------------------------------------------------------
+    was_censored = False
+    if contains_profanity(comment_content):
+        comment_content = censor_profanity(comment_content)
+        was_censored = True
+
     comment = Comment(
-        content=data['content'],
+        content=comment_content,
         author_name=getattr(user, 'name', 'Anonymous'),
         author_id=str(user.id)
     )
@@ -285,13 +347,20 @@ def add_comment(post_id):
     post.comments.append(comment)
     post.save()
     
-    return jsonify({'message': 'Comment added'}), 200
+    response_data = {'message': 'Comment added'}
+    
+    # Notify user if comment was censored
+    if was_censored:
+        response_data['censored'] = True
+        response_data['message'] = 'Comment added with inappropriate words censored'
+    
+    return jsonify(response_data), 200
 
 # --- 7. Update Comment ---
 @forum_routes.route('/<post_id>/comment/<comment_index>', methods=['PUT', 'OPTIONS'], strict_slashes=False)
 @token_required
 def update_comment(post_id, comment_index):
-    """Update a comment (only by author)"""
+    """Update a comment with auto-censoring (only by author)"""
     
     # Handle CORS preflight
     if request.method == 'OPTIONS':
@@ -332,11 +401,28 @@ def update_comment(post_id, comment_index):
     if not data or not data.get('content'):
         return jsonify({'error': 'content is required'}), 400
     
+    updated_content = data.get('content')
+    
+    # ---------------------------------------------------------------------------
+    # AUTO-CENSOR PROFANITY in updated comment
+    # ---------------------------------------------------------------------------
+    was_censored = False
+    if contains_profanity(updated_content):
+        updated_content = censor_profanity(updated_content)
+        was_censored = True
+    
     # Update comment content
-    comment.content = data['content']
+    comment.content = updated_content
     post.save()
     
-    return jsonify({'message': 'Comment updated successfully'}), 200
+    response_data = {'message': 'Comment updated successfully'}
+    
+    # Notify user if comment was censored
+    if was_censored:
+        response_data['censored'] = True
+        response_data['message'] = 'Comment updated with inappropriate words censored'
+    
+    return jsonify(response_data), 200
 
 # --- 8. Delete Comment ---
 @forum_routes.route('/<post_id>/comment/<comment_index>', methods=['DELETE', 'OPTIONS'], strict_slashes=False)

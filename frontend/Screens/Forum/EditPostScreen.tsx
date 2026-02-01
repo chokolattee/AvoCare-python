@@ -90,7 +90,7 @@ const EditPostScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   // -----------------------------------------------------------------------
-  // Submit Edit
+  // Submit Edit - AUTO-CENSORING with user notification
   // -----------------------------------------------------------------------
   const handleSubmit = async () => {
     // Validation
@@ -161,12 +161,26 @@ const EditPostScreen: React.FC<Props> = ({ navigation, route }) => {
         throw new Error(errorData.error || errorData.message || `Server error: ${res.status}`);
       }
 
+      const responseData = await res.json();
+
       // Success! Navigate back
       navigation.goBack();
 
-      // Show success message
+      // Show success message - different message if content was censored
       setTimeout(() => {
-        Alert.alert('✅ Success!', 'Your post has been updated.', [{ text: 'OK' }]);
+        if (responseData.censored) {
+          Alert.alert(
+            '✅ Post Updated!', 
+            'Your post has been updated. Note: Some inappropriate words were automatically replaced with asterisks (***) to maintain a respectful community.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert(
+            '✅ Success!', 
+            'Your post has been updated.',
+            [{ text: 'OK' }]
+          );
+        }
       }, 300);
     } catch (err) {
       console.error('Post update error:', err);
@@ -322,6 +336,11 @@ const EditPostScreen: React.FC<Props> = ({ navigation, route }) => {
         >
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
+
+        {/* Help Text */}
+        <Text style={styles.helpTextSmall}>
+          Note: Inappropriate language will be automatically censored.
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -408,12 +427,19 @@ const styles = StyleSheet.create({
   cancelButton: {
     paddingVertical: 15,
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 16,
   },
   cancelText: {
     color: '#666',
     fontSize: 16,
     fontWeight: '600',
+  },
+
+  helpTextSmall: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 40,
   },
 
   // --- image picker ---

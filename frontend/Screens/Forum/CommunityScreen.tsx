@@ -10,15 +10,14 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL as BASE_URL } from '../../config/api';
-// ---------------------------------------------------------------------------
-// Navigation types
-// ---------------------------------------------------------------------------
+
 type CommunityStackParamList = {
   Community: undefined;
   PostDetail: { postId: string };
@@ -40,9 +39,6 @@ interface Props {
   route: CommunityScreenRouteProp;
 }
 
-// ---------------------------------------------------------------------------
-// Data shape
-// ---------------------------------------------------------------------------
 export interface ForumPost {
   id: string;
   title: string;
@@ -54,6 +50,7 @@ export interface ForumPost {
   likes: number;
   comments_count: number;
   created_at: string;
+  updated_at?: string;
   comments: {
     content: string;
     author_name: string;
@@ -61,9 +58,6 @@ export interface ForumPost {
   }[];
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
 const FORUM_URL = `${BASE_URL}/api/forum`;
 
 const categories = [
@@ -74,23 +68,44 @@ const categories = [
   { key: 'harvest', label: 'Harvest', icon: 'nutrition-outline' },
 ];
 
-// ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
 function timeAgo(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return 'recently';
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (seconds < 0) return 'just now';
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return days === 1 ? '1 day ago' : `${days} days ago`;
+    const weeks = Math.floor(days / 7);
+    if (weeks < 4) return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+    if (days < 365) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${months[date.getMonth()]} ${date.getDate()}`;
+    }
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  } catch (error) {
+    return 'recently';
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Screen
-// ---------------------------------------------------------------------------
+function wasEdited(createdAt: string, updatedAt?: string): boolean {
+  if (!updatedAt) return false;
+  try {
+    const created = new Date(createdAt).getTime();
+    const updated = new Date(updatedAt).getTime();
+    return Math.abs(updated - created) > 1000;
+  } catch {
+    return false;
+  }
+}
+
 const CommunityScreen: React.FC<Props> = ({ navigation }) => {
   const [posts, setPosts] = useState<ForumPost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -99,8 +114,11 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
   const [likedSet, setLikedSet] = useState<Set<string>>(new Set());
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  
+  // DELETE CONFIRMATION MODAL STATE
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [postToDelete, setPostToDelete] = useState<{ id: string; title: string } | null>(null);
 
-  // Get current user ID
   useEffect(() => {
     const getUserId = async () => {
       try {
@@ -113,112 +131,91 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
     getUserId();
   }, []);
 
-  // -----------------------------------------------------------------------
-  // Fetch posts
-  // -----------------------------------------------------------------------
   const fetchPosts = useCallback(async () => {
     try {
       setLoading(true);
-      console.log('🔍 Fetching from:', FORUM_URL);
-
       const res = await fetch(FORUM_URL);
-      console.log('📡 Status:', res.status);
-      console.log('📋 Content-Type:', res.headers.get('content-type'));
-
-      // Get the response as text first to see what we're getting
-      const text = await res.text();
-      console.log('📄 Response preview:', text.substring(0, 200));
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${text}`);
-      }
-
-      // Try to parse as JSON
-      const data: ForumPost[] = JSON.parse(text);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: ForumPost[] = await res.json();
       setPosts(data);
-
       const counts: Record<string, number> = {};
-      data.forEach((p) => {
-        counts[p.id] = p.likes;
-      });
+      data.forEach((p) => { counts[p.id] = p.likes; });
       setLikeCounts(counts);
     } catch (err) {
-      console.error('❌ Failed to fetch posts:', err);
-      Alert.alert('Error', 'Failed to load posts. Please check the console.');
+      console.error('Failed to fetch posts:', err);
+      Alert.alert('Error', 'Failed to load posts.');
     } finally {
       setLoading(false);
     }
   }, []);
 
+  useEffect(() => { fetchPosts(); }, [fetchPosts]);
   useEffect(() => {
-    fetchPosts();
-  }, [fetchPosts]);
-
-  // Re-fetch when screen comes back into focus
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      fetchPosts();
-    });
+    const unsubscribe = navigation.addListener('focus', () => { fetchPosts(); });
     return unsubscribe;
   }, [navigation, fetchPosts]);
 
-  // -----------------------------------------------------------------------
-  // Delete Post
-  // -----------------------------------------------------------------------
-  const handleDeletePost = async (postId: string, postTitle: string) => {
-    Alert.alert(
-      'Delete Post',
-      `Are you sure you want to delete "${postTitle}"? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const token = await AsyncStorage.getItem('token');
-            if (!token) {
-              Alert.alert('Error', 'You must be logged in to delete posts.');
-              return;
-            }
-
-            try {
-              const res = await fetch(`${FORUM_URL}/${postId}`, {
-                method: 'DELETE',
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-              });
-
-              if (!res.ok) {
-                const error = await res.json().catch(() => ({}));
-                throw new Error(error.message || 'Failed to delete post');
-              }
-
-              // Remove from local state
-              setPosts((prev) => prev.filter((p) => p.id !== postId));
-              Alert.alert('Success', 'Post deleted successfully');
-            } catch (err) {
-              console.error('Delete failed:', err);
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete post');
-            }
-          },
-        },
-      ]
-    );
+  // Show the delete confirmation modal
+  const handleDeletePost = (postId: string, postTitle: string) => {
+    setPostToDelete({ id: postId, title: postTitle });
+    setShowDeleteModal(true);
   };
 
-  // -----------------------------------------------------------------------
-  // Like / Unlike
-  // -----------------------------------------------------------------------
+  // Actually delete the post
+  const confirmDelete = async () => {
+    if (!postToDelete) return;
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        setShowDeleteModal(false);
+        Alert.alert('Error', 'You must be logged in to delete posts.');
+        return;
+      }
+
+      const res = await fetch(`${FORUM_URL}/${postToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMessage = 'Failed to delete post';
+        try {
+          const error = JSON.parse(errorText);
+          errorMessage = error.message || error.error || errorMessage;
+        } catch (e) {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      setPosts((prev) => prev.filter((p) => p.id !== postToDelete.id));
+      setShowDeleteModal(false);
+      setPostToDelete(null);
+      Alert.alert('Success', 'Post deleted successfully');
+    } catch (err) {
+      console.error('Delete failed:', err);
+      setShowDeleteModal(false);
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete post');
+    }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
+    setPostToDelete(null);
+  };
+
   const handleLike = async (postId: string) => {
     const token = await AsyncStorage.getItem('token');
     if (!token) {
       console.warn('Not logged in – cannot like.');
       return;
     }
-
     const alreadyLiked = likedSet.has(postId);
-
     setLikedSet((prev) => {
       const next = new Set(prev);
       alreadyLiked ? next.delete(postId) : next.add(postId);
@@ -228,7 +225,6 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
       ...prev,
       [postId]: (prev[postId] ?? 0) + (alreadyLiked ? -1 : 1),
     }));
-
     try {
       const res = await fetch(`${FORUM_URL}/${postId}/like`, {
         method: 'PUT',
@@ -253,9 +249,6 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  // -----------------------------------------------------------------------
-  // Filtered posts
-  // -----------------------------------------------------------------------
   const filteredPosts = posts.filter((post) => {
     const matchesCategory = selectedCategory === 'all' || post.category === selectedCategory;
     const matchesSearch =
@@ -264,33 +257,22 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
     return matchesCategory && matchesSearch;
   });
 
-  // -----------------------------------------------------------------------
-  // Navigate to Chatbot
-  // -----------------------------------------------------------------------
   const handleChatbotPress = () => {
     navigation.getParent()?.navigate('Chatbot' as never);
   };
 
-  // -----------------------------------------------------------------------
-  // Check if user owns the post
-  // -----------------------------------------------------------------------
   const isOwnPost = (post: ForumPost): boolean => {
     return currentUserId !== null && post.user_id === currentUserId;
   };
 
-  // -----------------------------------------------------------------------
-  // Render
-  // -----------------------------------------------------------------------
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Community Forum</Text>
           <Text style={styles.headerSubtitle}>Connect with fellow avocado farmers</Text>
         </View>
 
-        {/* Search Bar */}
         <View style={styles.searchContainer}>
           <View style={styles.searchBar}>
             <Ionicons name="search-outline" size={20} color="#5d873e" style={styles.searchIcon} />
@@ -304,7 +286,6 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Categories */}
         <View style={styles.categoriesContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesContent}>
             {categories.map((cat) => (
@@ -334,7 +315,6 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
           </ScrollView>
         </View>
 
-        {/* Create Post Button */}
         <View style={styles.createPostContainer}>
           <TouchableOpacity
             style={styles.createPostButton}
@@ -345,7 +325,6 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Loading / Posts */}
         {loading ? (
           <ActivityIndicator size="large" color="#5d873e" style={{ marginTop: 40 }} />
         ) : (
@@ -353,22 +332,27 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
             {filteredPosts.length === 0 ? (
               <Text style={styles.emptyText}>No posts found.</Text>
             ) : (
-              filteredPosts.map((post) => (
-                <View key={post.id} style={styles.postCard}>
-                  <TouchableOpacity
-                    onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
-                  >
-                    {/* User Info */}
+              filteredPosts.map((post) => {
+                const edited = wasEdited(post.created_at, post.updated_at);
+                
+                return (
+                  <View key={post.id} style={styles.postCard}>
                     <View style={styles.postHeader}>
                       <View style={styles.userAvatar}>
                         <Ionicons name="person" size={24} color="#5d873e" />
                       </View>
                       <View style={styles.userInfo}>
                         <Text style={styles.username}>{post.username}</Text>
-                        <Text style={styles.timeAgo}>({timeAgo(post.created_at)})</Text>
+                        <View style={styles.timeContainer}>
+                          <Text style={styles.timeAgo}>
+                            {timeAgo(edited && post.updated_at ? post.updated_at : post.created_at)}
+                          </Text>
+                          {edited && (
+                            <Text style={styles.editedBadge}>• edited</Text>
+                          )}
+                        </View>
                       </View>
 
-                      {/* Edit/Delete Menu - Only show for own posts */}
                       {isOwnPost(post) && (
                         <View style={styles.postActions}>
                           <TouchableOpacity
@@ -395,39 +379,41 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
                       )}
                     </View>
 
-                    {/* Post Content */}
-                    <View style={styles.postContent}>
-                      <Text style={styles.postTitle}>{post.title}</Text>
-                      {post.imageUrl && (
-                        <Image source={{ uri: post.imageUrl }} style={styles.postCardImage} />
-                      )}
-                      <Text style={styles.postText} numberOfLines={2}>
-                        {post.content}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* Post Actions */}
-                  <View style={styles.postFooter}>
-                    <TouchableOpacity style={styles.actionItem} onPress={() => handleLike(post.id)}>
-                      <Ionicons
-                        name={likedSet.has(post.id) ? 'thumbs-up' : 'thumbs-up-outline'}
-                        size={20}
-                        color={likedSet.has(post.id) ? '#e74c3c' : '#5d873e'}
-                      />
-                      <Text style={styles.actionText}>{likeCounts[post.id] ?? post.likes}</Text>
-                    </TouchableOpacity>
-
                     <TouchableOpacity
-                      style={styles.actionItem}
                       onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
                     >
-                      <Ionicons name="chatbubble-outline" size={20} color="#5d873e" />
-                      <Text style={styles.actionText}>{post.comments_count}</Text>
+                      <View style={styles.postContent}>
+                        <Text style={styles.postTitle}>{post.title}</Text>
+                        {post.imageUrl && (
+                          <Image source={{ uri: post.imageUrl }} style={styles.postCardImage} />
+                        )}
+                        <Text style={styles.postText} numberOfLines={2}>
+                          {post.content}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
+
+                    <View style={styles.postFooter}>
+                      <TouchableOpacity style={styles.actionItem} onPress={() => handleLike(post.id)}>
+                        <Ionicons
+                          name={likedSet.has(post.id) ? 'thumbs-up' : 'thumbs-up-outline'}
+                          size={20}
+                          color={likedSet.has(post.id) ? '#e74c3c' : '#5d873e'}
+                        />
+                        <Text style={styles.actionText}>{likeCounts[post.id] ?? post.likes}</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.actionItem}
+                        onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
+                      >
+                        <Ionicons name="chatbubble-outline" size={20} color="#5d873e" />
+                        <Text style={styles.actionText}>{post.comments_count}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-              ))
+                );
+              })
             )}
           </View>
         )}
@@ -435,20 +421,56 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* Floating Chatbot Button */}
       <TouchableOpacity style={styles.chatbotButton} onPress={handleChatbotPress}>
         <Ionicons name="chatbubbles" size={28} color="#fff" />
         <View style={styles.chatbotBadge}>
           <Ionicons name="sparkles" size={12} color="#5d873e" />
         </View>
       </TouchableOpacity>
+
+      {/* CUSTOM DELETE CONFIRMATION MODAL - ALWAYS ON TOP */}
+      <Modal
+        visible={showDeleteModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={cancelDelete}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="warning" size={48} color="#e74c3c" />
+              <Text style={styles.modalTitle}>Delete Post</Text>
+            </View>
+            
+            <Text style={styles.modalMessage}>
+              Are you sure you want to delete "{postToDelete?.title}"?
+            </Text>
+            <Text style={styles.modalWarning}>
+              This action cannot be undone.
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={cancelDelete}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.deleteButton]}
+                onPress={confirmDelete}
+              >
+                <Text style={styles.deleteButtonText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   header: {
@@ -539,9 +561,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#5d873e',
   },
-  userInfo: { marginLeft: 12, flex: 1, flexDirection: 'row', alignItems: 'center' },
-  username: { fontSize: 15, fontWeight: '600', color: '#5d873e', marginRight: 6 },
+  userInfo: { marginLeft: 12, flex: 1 },
+  username: { fontSize: 15, fontWeight: '600', color: '#5d873e', marginBottom: 2 },
+  timeContainer: { flexDirection: 'row', alignItems: 'center' },
   timeAgo: { fontSize: 13, color: '#666' },
+  editedBadge: { fontSize: 12, color: '#999', marginLeft: 4, fontStyle: 'italic' },
   postActions: { flexDirection: 'row', gap: 8 },
   iconButton: { padding: 4 },
   postContent: { marginBottom: 12 },
@@ -593,6 +617,79 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#5d873e',
+  },
+  // MODAL STYLES
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#2d3e2d',
+    marginTop: 12,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 22,
+  },
+  modalWarning: {
+    fontSize: 14,
+    color: '#e74c3c',
+    textAlign: 'center',
+    marginBottom: 24,
+    fontWeight: '600',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f5f5f5',
+    borderWidth: 2,
+    borderColor: '#5d873e',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#5d873e',
+  },
+  deleteButton: {
+    backgroundColor: '#e74c3c',
+  },
+  deleteButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
 

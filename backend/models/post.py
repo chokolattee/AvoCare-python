@@ -24,7 +24,8 @@ class Post(Document):
     
     comments = ListField(EmbeddedDocumentField(Comment))
     created_at = DateTimeField(default=datetime.utcnow)
-
+    updated_at = DateTimeField(default=datetime.utcnow)
+    
     @property
     def like_count(self):
         return len(self.liked_by)

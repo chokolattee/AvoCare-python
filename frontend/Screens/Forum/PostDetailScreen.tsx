@@ -58,6 +58,7 @@ interface PostData {
   likes: number;
   comments_count: number;
   created_at: string;
+  updated_at?: string; // Added for edit tracking
   comments: CommentData[];
 }
 
@@ -67,17 +68,81 @@ interface PostData {
 const FORUM_URL = `${BASE_URL}/api/forum`;
 
 // ---------------------------------------------------------------------------
-// Helper
+// Helper - IMPROVED with better time formatting
 // ---------------------------------------------------------------------------
 function timeAgo(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  try {
+    // Parse the ISO date string
+    const date = new Date(dateStr);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'recently';
+    }
+    
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    // Handle future dates (shouldn't happen, but just in case)
+    if (seconds < 0) {
+      return 'just now';
+    }
+    
+    // Less than 1 minute
+    if (seconds < 60) return 'just now';
+    
+    // Less than 1 hour - show minutes
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+      return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
+    }
+    
+    // Less than 24 hours - show hours
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+      return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+    }
+    
+    // Less than 7 days - show days
+    const days = Math.floor(hours / 24);
+    if (days < 7) {
+      return days === 1 ? '1 day ago' : `${days} days ago`;
+    }
+    
+    // Less than 30 days - show weeks
+    const weeks = Math.floor(days / 7);
+    if (weeks < 4) {
+      return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+    }
+    
+    // Less than 365 days - show date (e.g., "Jan 15")
+    if (days < 365) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${months[date.getMonth()]} ${date.getDate()}`;
+    }
+    
+    // More than 365 days - show full date with year (e.g., "Jan 15, 2024")
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  } catch (error) {
+    console.error('Error parsing date:', dateStr, error);
+    return 'recently';
+  }
+}
+
+// Check if post was edited (updated_at is different from created_at)
+function wasEdited(createdAt: string, updatedAt?: string): boolean {
+  if (!updatedAt) return false;
+  
+  try {
+    const created = new Date(createdAt).getTime();
+    const updated = new Date(updatedAt).getTime();
+    
+    // Consider edited if difference is more than 1 second
+    return Math.abs(updated - created) > 1000;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +434,8 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
   if (!post) return null;
 
+  const edited = wasEdited(post.created_at, post.updated_at);
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -415,9 +482,16 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             <View style={styles.avatar}>
               <Ionicons name="person" size={22} color="#5d873e" />
             </View>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.authorName}>{post.username}</Text>
-              <Text style={styles.authorTime}>{timeAgo(post.created_at)}</Text>
+              <View style={styles.timeContainer}>
+                <Text style={styles.authorTime}>
+                  {timeAgo(edited && post.updated_at ? post.updated_at : post.created_at)}
+                </Text>
+                {edited && (
+                  <Text style={styles.editedBadge}>• edited</Text>
+                )}
+              </View>
             </View>
             <View style={styles.categoryBadge}>
               <Text style={styles.categoryBadgeText}>
@@ -582,7 +656,9 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   authorName: { fontSize: 15, fontWeight: '600', color: '#5d873e' },
+  timeContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
   authorTime: { fontSize: 12, color: '#888' },
+  editedBadge: { fontSize: 11, color: '#999', marginLeft: 4, fontStyle: 'italic' },
   categoryBadge: {
     marginLeft: 'auto',
     backgroundColor: '#e8f5e9',
@@ -671,19 +747,19 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e8e8e8',
   },
-commentInput: {
-  flex: 1,
-  backgroundColor: '#f5f5f5',
-  borderRadius: 20,
-  paddingHorizontal: 16,
-  paddingVertical: 10,
-  fontSize: 14,
-  color: '#333',
-  borderWidth: 1,
-  borderColor: '#e8e8e8',
-  marginRight: 10,
-  maxHeight: 100,
-},
+  commentInput: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#333',
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+    marginRight: 10,
+    maxHeight: 100,
+  },
   sendButton: {
     width: 42,
     height: 42,

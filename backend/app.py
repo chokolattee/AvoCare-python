@@ -42,6 +42,21 @@ def create_app():
     except Exception as e:
         print(f"⚠️  Cloudinary configuration warning: {str(e)}")
     
+    # ============================================================================
+    # INITIALIZE PROFANITY FILTER
+    # ============================================================================
+    try:
+        from utils.profanity_filter import initialize_profanity_filter
+        initialize_profanity_filter()
+        print("✅ Profanity filter initialized successfully")
+    except ImportError:
+        print("⚠️  WARNING: Profanity filter not found!")
+        print("   Install with: pip install better-profanity")
+        print("   Forum posts will not be filtered for inappropriate content.\n")
+    except Exception as e:
+        print(f"⚠️  Profanity filter initialization warning: {str(e)}\n")
+    # ============================================================================
+    
     # ENHANCED: Enable CORS with proper configuration for production
     CORS(app, 
          resources={r"/*": {
@@ -69,10 +84,21 @@ def create_app():
     # Health check route
     @app.route('/health', methods=['GET'])
     def health_check():
+        # Check if profanity filter is available
+        profanity_status = 'disabled'
+        try:
+            from utils.profanity_filter import contains_profanity
+            profanity_status = 'enabled'
+        except:
+            pass
+        
         return jsonify({
             'status': 'healthy', 
             'service': 'AvoCare API',
             'version': '1.0.0',
+            'features': {
+                'profanity_filter': profanity_status
+            },
             'endpoints': {
                 'GET /health': 'Overall API health check',
                 'GET /api/ripeness/health': 'Ripeness detection service health',
