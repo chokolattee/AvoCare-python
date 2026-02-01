@@ -18,7 +18,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Yup from 'yup';
 
-const API_URL = 'http://192.168.0.116:8081/api/users/';
+const API_URL = 'http://192.168.0.117:8081/api/users/';
 
 interface User {
   id: string;

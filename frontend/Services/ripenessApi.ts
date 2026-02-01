@@ -1,4 +1,4 @@
-const API_URL = 'http://192.168.0.116:8081'; // Change to your computer's IP
+import { API_BASE_URL as API_URL }  from '../config/api';
 
 export interface RipenessResult {
   success: boolean;

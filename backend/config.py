@@ -10,8 +10,10 @@ class Config:
         'connect': False
     }
     
-    # JWT Configuration
     SECRET_KEY = os.getenv('JWT_SECRET', 'your_jwt_secret_key')
+    # flask_jwt_extended specifically looks for THIS key.  Without it,
+    # JWTManager raises "JWT_SECRET_KEY is not set" at runtime.
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET', 'your_jwt_secret_key')
     JWT_EXPIRES_TIME = os.getenv('JWT_EXPIRES_TIME', '7d')
     
     # Cloudinary Configuration

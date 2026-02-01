@@ -1,4 +1,5 @@
-from flask import Blueprint
+from flask import Blueprint, request, jsonify
+from models.user import User
 from controllers.user_controller import UserController
 from middleware.auth_middleware import token_required, admin_required
 
@@ -13,6 +14,9 @@ def register():
 @user_routes.route('/login', methods=['POST'])
 def login():
     """Login user"""
+    # Delegate entirely to the controller — it handles validation,
+    # password check, and token generation via user.generate_token()
+    # which uses raw PyJWT (the same system auth_middleware expects).
     return UserController.login()
 
 # Protected routes (require authentication)

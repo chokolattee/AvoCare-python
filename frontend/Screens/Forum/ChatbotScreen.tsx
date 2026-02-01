@@ -137,7 +137,7 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Backend API URL - Update this to match your server
-  const API_BASE_URL = 'http://192.168.0.116:8081';
+  const API_BASE_URL = 'http://192.168.0.117:8081';
 
   // Default quick questions (fallback if API fails)
   const defaultQuestions = [

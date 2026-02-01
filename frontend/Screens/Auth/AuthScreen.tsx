@@ -19,11 +19,13 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Yup from 'yup';
+import { API_BASE_URL } from '../../config/api';
 
 // ============================================
-// CHANGE THIS TO YOUR BACKEND URL
+// FIXED: Now uses centralized API config
+// Backend URL will automatically adjust based on platform
 // ============================================
-const API_URL = 'http://192.168.0.116:8081/api/users/';
+const API_URL = `${API_BASE_URL}/api/users/`;
 // ============================================
 
 const PRIMARY_COLOR = '#3d4d3d';
@@ -116,32 +118,50 @@ const AuthScreen: React.FC = () => {
 
       setLoading(true);
 
-      console.log('Logging in to:', `${API_URL}login`);
+      console.log('🔐 Logging in to:', `${API_URL}login`);
       
       const response = await axios.post(`${API_URL}login`, {
         email: loginEmail.toLowerCase().trim(),
         password: loginPassword,
       });
 
-      console.log('Login response:', response.data);
+      console.log('✅ Login response:', response.data);
 
       if (response.data.success && response.data.token) {
-        // Store token and user data
-        await AsyncStorage.setItem('jwt', response.data.token);
-        await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
+        // ============================================
+        // FIXED: Store ALL required keys for compatibility
+        // ============================================
+        const userData = response.data.user;
+        const token = response.data.token;
+
+        // Store all variations to ensure compatibility
+        await AsyncStorage.multiSet([
+          ['token', token],           // For API calls
+          ['jwt', token],             // For Header compatibility
+          ['user', JSON.stringify(userData)],  // Full user object
+          ['userId', userData.id],    // User ID
+          ['username', userData.name] // Username
+        ]);
+
+        console.log('✅ Stored auth data:', {
+          userId: userData.id,
+          username: userData.name,
+          email: userData.email
+        });
+        // ============================================
         
         // Close modal and navigate to home
         navigation.goBack();
         
-        // Optional: Show success message
+        // Show success message after a short delay
         setTimeout(() => {
-          Alert.alert('Success', `Welcome back, ${response.data.user.name}!`);
+          Alert.alert('Success', `Welcome back, ${userData.name}!`);
         }, 300);
       } else {
         setError('Login failed. Please try again.');
       }
     } catch (err: any) {
-      console.error('Login error:', err);
+      console.error('❌ Login error:', err);
       
       // Handle validation errors
       if (err.name === 'ValidationError') {
@@ -188,7 +208,7 @@ const AuthScreen: React.FC = () => {
 
       setLoading(true);
 
-      console.log('Registering to:', `${API_URL}register`);
+      console.log('📝 Registering to:', `${API_URL}register`);
       
       const formData = new FormData();
       formData.append('name', registerName.trim());
@@ -197,7 +217,7 @@ const AuthScreen: React.FC = () => {
       formData.append('role', 'user');
       
       if (image) {
-        console.log('Processing image:', image);
+        console.log('📸 Processing image:', image);
         
         let fileName: string;
         let fileType: string;
@@ -205,7 +225,7 @@ const AuthScreen: React.FC = () => {
         if (Platform.OS === 'web' || image.startsWith('blob:')) {
           fileName = `photo_${Date.now()}.jpg`;
           fileType = 'jpg';
-          console.log('📱 Web platform - using default jpg extension');
+          console.log('🌐 Web platform - using default jpg extension');
         } else {
           const uriParts = image.split('.');
           fileType = uriParts[uriParts.length - 1];
@@ -214,7 +234,7 @@ const AuthScreen: React.FC = () => {
         }
         
         const mimeType = `image/${fileType === 'jpg' ? 'jpeg' : fileType}`;
-        console.log('File details:', { fileName, fileType, mimeType, uri: image });
+        console.log('File details:', { fileName, fileType, mimeType });
         
         if (Platform.OS === 'web' || image.startsWith('blob:')) {
           console.log('Converting blob to File object...');
@@ -240,7 +260,7 @@ const AuthScreen: React.FC = () => {
         }
       }
 
-      console.log('Sending request...');
+      console.log('📤 Sending registration request...');
 
       const response = await fetch(`${API_URL}register`, {
         method: 'POST',
@@ -251,16 +271,27 @@ const AuthScreen: React.FC = () => {
       });
 
       const data = await response.json();
-      console.log('Response:', data);
+      console.log('📥 Registration response:', data);
 
       if (data.success) {
         // Switch to login form
         setFormActive('login');
-        resetForm();
+        
+        // Pre-fill login email
+        setLoginEmail(registerEmail);
+        
+        // Clear register form
+        setRegisterEmail('');
+        setRegisterName('');
+        setRegisterPassword('');
+        setRegisterConfirmPassword('');
+        setImage(null);
+        setError('');
+        setValidationErrors({});
         
         // Show success message
         Alert.alert(
-          'Success!',
+          '✅ Success!',
           'Registration successful! Please log in with your credentials.',
           [{ text: 'OK' }]
         );
@@ -268,7 +299,7 @@ const AuthScreen: React.FC = () => {
         setError(data.message || 'Registration failed. Please try again.');
       }
     } catch (err: any) {
-      console.error('Register error:', err);
+      console.error('❌ Register error:', err);
       
       // Handle validation errors
       if (err.name === 'ValidationError') {
@@ -320,6 +351,7 @@ const AuthScreen: React.FC = () => {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+            <View>
             {/* Logo */}
             <View style={styles.logoContainer}>
               <Image
@@ -332,12 +364,12 @@ const AuthScreen: React.FC = () => {
             <View style={styles.divider} />
 
             {/* Error message */}
-            {error && (
+            {error ? (
               <View style={styles.errorContainer}>
                 <Ionicons name="alert-circle" size={20} color="#c33" style={{ marginRight: 8 }} />
                 <Text style={styles.errorText}>{error}</Text>
               </View>
-            )}
+            ) : null}
 
             {/* Form switcher */}
             <View style={styles.formSelection}>
@@ -379,7 +411,7 @@ const AuthScreen: React.FC = () => {
             </View>
 
             {/* Login Form */}
-            {formActive === 'login' && (
+            {formActive === 'login' ? (
               <View style={styles.formPanel}>
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Email</Text>
@@ -398,9 +430,9 @@ const AuthScreen: React.FC = () => {
                     autoCapitalize="none"
                     editable={!loading}
                   />
-                  {validationErrors.email && (
+                  {validationErrors.email ? (
                     <Text style={styles.errorTextSmall}>{validationErrors.email}</Text>
-                  )}
+                  ) : null}
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -419,9 +451,9 @@ const AuthScreen: React.FC = () => {
                     secureTextEntry
                     editable={!loading}
                   />
-                  {validationErrors.password && (
+                  {validationErrors.password ? (
                     <Text style={styles.errorTextSmall}>{validationErrors.password}</Text>
-                  )}
+                  ) : null}
                 </View>
 
                 <TouchableOpacity
@@ -436,10 +468,10 @@ const AuthScreen: React.FC = () => {
                   )}
                 </TouchableOpacity>
               </View>
-            )}
+            ) : null}
 
             {/* Register Form */}
-            {formActive === 'register' && (
+            {formActive === 'register' ? (
               <View style={styles.formPanel}>
                 {/* Image picker */}
                 <View style={styles.imageOuterContainer}>
@@ -471,9 +503,9 @@ const AuthScreen: React.FC = () => {
                     autoCapitalize="words"
                     editable={!loading}
                   />
-                  {validationErrors.name && (
+                  {validationErrors.name ? (
                     <Text style={styles.errorTextSmall}>{validationErrors.name}</Text>
-                  )}
+                  ) : null}
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -493,9 +525,9 @@ const AuthScreen: React.FC = () => {
                     autoCapitalize="none"
                     editable={!loading}
                   />
-                  {validationErrors.email && (
+                  {validationErrors.email ? (
                     <Text style={styles.errorTextSmall}>{validationErrors.email}</Text>
-                  )}
+                  ) : null}
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -514,9 +546,9 @@ const AuthScreen: React.FC = () => {
                     secureTextEntry
                     editable={!loading}
                   />
-                  {validationErrors.password && (
+                  {validationErrors.password ? (
                     <Text style={styles.errorTextSmall}>{validationErrors.password}</Text>
-                  )}
+                  ) : null}
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -535,9 +567,9 @@ const AuthScreen: React.FC = () => {
                     secureTextEntry
                     editable={!loading}
                   />
-                  {validationErrors.confirmPassword && (
+                  {validationErrors.confirmPassword ? (
                     <Text style={styles.errorTextSmall}>{validationErrors.confirmPassword}</Text>
-                  )}
+                  ) : null}
                 </View>
 
                 <TouchableOpacity
@@ -552,7 +584,8 @@ const AuthScreen: React.FC = () => {
                   )}
                 </TouchableOpacity>
               </View>
-            )}
+            ) : null}
+            </View>
           </KeyboardAwareScrollView>
         </Pressable>
       </Pressable>

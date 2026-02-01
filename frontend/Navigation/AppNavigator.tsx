@@ -10,30 +10,42 @@ const getScreenWidth = () => Dimensions.get('window').width;
 import Header from '../Components/Header';
 import HomeScreen from '../Screens/HomeScreen';
 import ScanScreen from '../Screens/ScanScreen';
-import CommunityScreen from '../Screens/CommunityScreen';
+import CommunityScreen from '../Screens/Forum/CommunityScreen';
 import MarketScreen from '../Screens/MarketScreen';
 import AuthScreen from '../Screens/Auth/AuthScreen';
 import ProfileScreen from '../Screens/Auth/ProfileScreen';
-import ChatbotScreen from '../Screens/ChatbotScreen';
+import ChatbotScreen from '../Screens/Forum/ChatbotScreen';
+import PostDetailScreen from '../Screens/Forum/PostDetailScreen';
+import CreatePostScreen from '../Screens/Forum/CreatePostScreen';
+import EditPostScreen from '../Screens/Forum/EditPostScreen'; 
 
 // Type definitions
 export type TabParamList = {
   Home: undefined;
-  Community: undefined;
+  CommunityStack: undefined;  // Changed from Community to CommunityStack
   Scan: undefined;
   Market: undefined;
   Profile: undefined;
+};
+
+// New type for Community stack
+export type CommunityStackParamList = {
+  Community: undefined;
+  PostDetail: { postId: string };
+  CreatePost: undefined;
+  EditPost: { postId: string; title: string; content: string; category: string; imageUrl?: string };
 };
 
 export type RootStackParamList = {
   MainTabs: undefined;
   Notifications: undefined;
   AuthScreen: undefined;
-  Chatbot: undefined;  // Added Chatbot to root stack
+  Chatbot: undefined;
 };
 
 const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createStackNavigator<RootStackParamList>();
+const CommunityStackNav = createStackNavigator<CommunityStackParamList>();
 
 // Search Bar Component
 function SearchBar() {
@@ -62,7 +74,7 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
   
   const menuItems = [
     { name: 'Home', route: 'Home', icon: 'home-outline' },
-    { name: 'Community', route: 'Community', icon: 'people-outline' },
+    { name: 'Community', route: 'CommunityStack', icon: 'people-outline' },  // Updated to CommunityStack
     { name: 'Scan', route: 'Scan', icon: 'camera-outline' },
     { name: 'Market', route: 'Market', icon: 'storefront-outline' },
   ];
@@ -175,7 +187,7 @@ function NavigationMenu({ navigation }: { navigation: any }) {
       
       <TouchableOpacity 
         style={styles.navItem}
-        onPress={() => navigation.navigate('Community')}
+        onPress={() => navigation.navigate('CommunityStack')}
       >
         <View style={styles.navButton}>
           <Ionicons name="people-outline" size={iconSize} color="#fff" />
@@ -247,6 +259,22 @@ function CustomHeader({ navigation }: { navigation: any }) {
   );
 }
 
+// Community Stack Navigator - ADDED THIS
+function CommunityStackNavigator() {
+  return (
+    <CommunityStackNav.Navigator
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <CommunityStackNav.Screen name="Community" component={CommunityScreen} />
+      <CommunityStackNav.Screen name="PostDetail" component={PostDetailScreen} />
+      <CommunityStackNav.Screen name="CreatePost" component={CreatePostScreen} />
+      <CommunityStackNav.Screen name="EditPost" component={EditPostScreen} />
+    </CommunityStackNav.Navigator>
+  );
+}
+
 // Main Tab Navigator with custom Header
 function MainTabNavigator() {
   return (
@@ -260,7 +288,7 @@ function MainTabNavigator() {
             case 'Home':
               iconName = focused ? 'home' : 'home-outline';
               break;
-            case 'Community':
+            case 'CommunityStack':  // Updated from Community
               iconName = focused ? 'people' : 'people-outline';
               break;
             case 'Scan':
@@ -311,8 +339,8 @@ function MainTabNavigator() {
         }}
       />
       <Tab.Screen 
-        name="Community" 
-        component={CommunityScreen}
+        name="CommunityStack"  // Changed from Community to CommunityStack
+        component={CommunityStackNavigator}  // Use the stack navigator
         options={{ 
           title: 'Community',
           tabBarLabel: 'Community',
@@ -363,7 +391,7 @@ export default function AppNavigator() {
             presentation: 'modal',
           }}
         />
-        {/* Chatbot Screen - Added here */}
+        {/* Chatbot Screen */}
         <Stack.Screen 
           name="Chatbot" 
           component={ChatbotScreen}

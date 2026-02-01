@@ -9,6 +9,10 @@ def token_required(f):
     """
     @wraps(f)
     def decorated(*args, **kwargs):
+        # Always let CORS preflight through without checking auth
+        if request.method == 'OPTIONS':
+            return '', 204
+
         token = None
         
         # Get token from Authorization header

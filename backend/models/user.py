@@ -124,4 +124,4 @@ class User(Document):
     def save(self, *args, **kwargs):
         """Override save to update the updated_at timestamp"""
         self.updated_at = datetime.utcnow()
-        return super(User, self).save(*args, **kwargs)
+        return super(User, self).save(*args, **kwargs)  

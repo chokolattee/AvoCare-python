@@ -1,9 +1,10 @@
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from mongoengine import connect
 import cloudinary
 from config import Config
 import os
+
 
 def create_app():
     app = Flask(__name__)
@@ -22,43 +23,96 @@ def create_app():
         print("   Chatbot functionality will not work without a valid Gemini API key.")
         print("   Get one at: https://makersuite.google.com/app/apikey\n")
     
-    # Initialize MongoDB
-    connect(host=app.config['MONGODB_SETTINGS']['host'])
+    # Initialize MongoDB with error handling
+    try:
+        connect(host=app.config['MONGODB_SETTINGS']['host'])
+        print("✅ MongoDB connected successfully")
+    except Exception as e:
+        print(f"❌ MongoDB connection failed: {str(e)}")
+        print("   Please check your MONGODB_URI in .env file\n")
     
-    # Initialize Cloudinary
-    cloudinary.config(
-        cloud_name=app.config['CLOUDINARY_CLOUD_NAME'],
-        api_key=app.config['CLOUDINARY_API_KEY'],
-        api_secret=app.config['CLOUDINARY_API_SECRET']
-    )
+    # Initialize Cloudinary with error handling
+    try:
+        cloudinary.config(
+            cloud_name=app.config['CLOUDINARY_CLOUD_NAME'],
+            api_key=app.config['CLOUDINARY_API_KEY'],
+            api_secret=app.config['CLOUDINARY_API_SECRET']
+        )
+        print("✅ Cloudinary configured successfully")
+    except Exception as e:
+        print(f"⚠️  Cloudinary configuration warning: {str(e)}")
     
-    # Enable CORS
-    CORS(app)
+    # ENHANCED: Enable CORS with proper configuration for production
+    CORS(app, 
+         resources={r"/*": {
+             "origins": "*",  # In production, replace with specific domains
+             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             "allow_headers": ["Content-Type", "Authorization"],
+             "expose_headers": ["Content-Type", "Authorization"],
+             "supports_credentials": True,
+             "max_age": 3600  # Cache preflight requests for 1 hour
+         }})
     
     # Register blueprints
     from routes.user_routes import user_routes
     from routes.leaves_routes import leaves_routes
     from routes.ripeness_routes import ripeness_routes
     from routes.chatbot_routes import chatbot_routes
+    from routes.forum_routes import forum_routes    
     
     app.register_blueprint(user_routes)
     app.register_blueprint(leaves_routes)
     app.register_blueprint(ripeness_routes)
     app.register_blueprint(chatbot_routes)
+    app.register_blueprint(forum_routes, url_prefix='/api/forum')
     
     # Health check route
     @app.route('/health', methods=['GET'])
     def health_check():
-        return {
+        return jsonify({
             'status': 'healthy', 
             'service': 'AvoCare API',
+            'version': '1.0.0',
             'endpoints': {
                 'GET /health': 'Overall API health check',
                 'GET /api/ripeness/health': 'Ripeness detection service health',
                 'GET /api/leaves/health': 'Leaf disease detection service health',
                 'GET /api/chatbot/health': 'Chatbot service health'
             }
-        }, 200
+        }), 200
+    
+    # Global error handlers
+    @app.errorhandler(404)
+    def not_found(error):
+        return jsonify({
+            'success': False,
+            'message': 'Resource not found',
+            'error': 'Not Found'
+        }), 404
+    
+    @app.errorhandler(500)
+    def internal_error(error):
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error',
+            'error': 'Server Error'
+        }), 500
+    
+    @app.errorhandler(401)
+    def unauthorized(error):
+        return jsonify({
+            'success': False,
+            'message': 'Authentication required',
+            'error': 'Unauthorized'
+        }), 401
+    
+    @app.errorhandler(403)
+    def forbidden(error):
+        return jsonify({
+            'success': False,
+            'message': 'Access forbidden',
+            'error': 'Forbidden'
+        }), 403
     
     # Print registered routes on startup
     print("\n📋 Registered Routes:")
@@ -70,13 +124,17 @@ def create_app():
     
     return app
 
+
 if __name__ == '__main__':
     app = create_app()
     
     print(f"🚀 Starting AvoCare API")
     print(f"🌐 Host: 0.0.0.0")
     print(f"🔌 Port: {app.config['PORT']}")
-    print(f"🐛 Debug: {app.config['DEBUG']}")
+    print(f"🛠 Debug: {app.config['DEBUG']}")
+    print(f"🔒 CORS: Enabled (all origins)")
+    print(f"📦 Environment: {'Development' if app.config['DEBUG'] else 'Production'}")
+    print()
     
     app.run(
         host='0.0.0.0',
