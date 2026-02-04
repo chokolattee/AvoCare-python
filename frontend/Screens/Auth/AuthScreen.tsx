@@ -21,13 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Yup from 'yup';
 import { API_BASE_URL } from '../../config/api';
 
-// ============================================
-// FIXED: Now uses centralized API config
-// Backend URL will automatically adjust based on platform
-// ============================================
 const API_URL = `${API_BASE_URL}/api/users/`;
-// ============================================
-
 const PRIMARY_COLOR = '#3d4d3d';
 
 // Validation Schemas
@@ -128,19 +122,19 @@ const AuthScreen: React.FC = () => {
       console.log('✅ Login response:', response.data);
 
       if (response.data.success && response.data.token) {
-        // ============================================
-        // FIXED: Store ALL required keys for compatibility
-        // ============================================
         const userData = response.data.user;
         const token = response.data.token;
 
+        // ============================================
+        // CRITICAL FIX: Store auth data and trigger event
+        // ============================================
         // Store all variations to ensure compatibility
         await AsyncStorage.multiSet([
-          ['token', token],           // For API calls
-          ['jwt', token],             // For Header compatibility
-          ['user', JSON.stringify(userData)],  // Full user object
-          ['userId', userData.id],    // User ID
-          ['username', userData.name] // Username
+          ['token', token],
+          ['jwt', token],
+          ['user', JSON.stringify(userData)],
+          ['userId', userData.id],
+          ['username', userData.name]
         ]);
 
         console.log('✅ Stored auth data:', {
@@ -148,6 +142,11 @@ const AuthScreen: React.FC = () => {
           username: userData.name,
           email: userData.email
         });
+
+        // Dispatch event to notify Header and other components
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('authChange'));
+        }
         // ============================================
         
         // Close modal and navigate to home

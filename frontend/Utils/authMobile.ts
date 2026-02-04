@@ -14,6 +14,18 @@ export const authenticateMobile = async (data: any): Promise<void> => {
             if (user.id) {
                 await AsyncStorage.setItem('userId', user.id);
             }
+            
+            // For web platform, also update sessionStorage and dispatch event
+            if (typeof window !== 'undefined') {
+                sessionStorage.setItem('token', token);
+                sessionStorage.setItem('jwt', token);
+                sessionStorage.setItem('user', JSON.stringify(user));
+                if (user.id) {
+                    sessionStorage.setItem('userId', user.id);
+                }
+                // Dispatch custom event to notify components
+                window.dispatchEvent(new CustomEvent('authChange', { detail: { authenticated: true, user } }));
+            }
         }
     } catch (error) {
         console.error('Error storing auth data:', error);
@@ -30,6 +42,18 @@ export const logoutMobile = async (): Promise<void> => {
             'userId',
             'accessToken'
         ]);
+        
+        // For web platform, also clear sessionStorage
+        if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('jwt');
+            sessionStorage.removeItem('user');
+            sessionStorage.removeItem('userId');
+            sessionStorage.removeItem('accessToken');
+            
+            // Dispatch custom event to notify components
+            window.dispatchEvent(new CustomEvent('authChange', { detail: { authenticated: false, user: null } }));
+        }
         
         console.log('Logout successful - AsyncStorage cleared');
     } catch (error) {

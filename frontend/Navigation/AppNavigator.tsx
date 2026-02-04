@@ -2,7 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { View, StyleSheet, Platform, TextInput, TouchableOpacity, Text, Dimensions, Modal, ScrollView, Animated } from 'react-native';
+import { View, StyleSheet, Platform, Modal, ScrollView, Animated, TouchableOpacity, Text, Dimensions } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 
 const getScreenWidth = () => Dimensions.get('window').width;
@@ -16,23 +16,20 @@ import AuthScreen from '../Screens/Auth/AuthScreen';
 import ProfileScreen from '../Screens/Auth/ProfileScreen';
 import ChatbotScreen from '../Screens/Forum/ChatbotScreen';
 import PostDetailScreen from '../Screens/Forum/PostDetailScreen';
-import CreatePostScreen from '../Screens/Forum/CreatePostScreen';
 import EditPostScreen from '../Screens/Forum/EditPostScreen'; 
 
 // Type definitions
 export type TabParamList = {
   Home: undefined;
-  CommunityStack: undefined;  // Changed from Community to CommunityStack
+  CommunityStack: undefined;
   Scan: undefined;
   Market: undefined;
   Profile: undefined;
 };
 
-// New type for Community stack
 export type CommunityStackParamList = {
   Community: undefined;
   PostDetail: { postId: string };
-  CreatePost: undefined;
   EditPost: { postId: string; title: string; content: string; category: string; imageUrl?: string };
 };
 
@@ -41,31 +38,12 @@ export type RootStackParamList = {
   Notifications: undefined;
   AuthScreen: undefined;
   Chatbot: undefined;
+  About: undefined;
 };
 
 const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createStackNavigator<RootStackParamList>();
 const CommunityStackNav = createStackNavigator<CommunityStackParamList>();
-
-// Search Bar Component
-function SearchBar() {
-  const [searchQuery, setSearchQuery] = useState('');
-
-  return (
-    <View style={styles.searchBarContainer}>
-      <View style={styles.searchInputWrapper}>
-        <Ionicons name="search-outline" size={20} color="#999" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search the site"
-          placeholderTextColor="#999"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-    </View>
-  );
-}
 
 // Mobile Menu Modal Component
 function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; onClose: () => void; navigation: any }) {
@@ -74,9 +52,10 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
   
   const menuItems = [
     { name: 'Home', route: 'Home', icon: 'home-outline' },
-    { name: 'Community', route: 'CommunityStack', icon: 'people-outline' },  // Updated to CommunityStack
+    { name: 'Community', route: 'CommunityStack', icon: 'people-outline' },
     { name: 'Scan', route: 'Scan', icon: 'camera-outline' },
     { name: 'Market', route: 'Market', icon: 'storefront-outline' },
+    { name: 'About', route: 'About', icon: 'information-circle-outline' },
   ];
 
   useEffect(() => {
@@ -160,65 +139,7 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
   );
 }
 
-// Navigation Menu Component
-function NavigationMenu({ navigation }: { navigation: any }) {
-  const [screenWidth, setScreenWidth] = useState(getScreenWidth());
-  const iconSize = screenWidth < 375 ? 18 : 20;
-  
-  useEffect(() => {
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
-      setScreenWidth(window.width);
-    });
-    
-    return () => subscription?.remove();
-  }, []);
-  
-  return (
-    <View style={styles.navigationMenu}>
-      <TouchableOpacity 
-        style={styles.navItem}
-        onPress={() => navigation.navigate('Home')}
-      >
-        <View style={styles.navButton}>
-          <Ionicons name="home-outline" size={iconSize} color="#fff" />
-          <Text style={styles.navText}>HOME</Text>
-        </View>
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={styles.navItem}
-        onPress={() => navigation.navigate('CommunityStack')}
-      >
-        <View style={styles.navButton}>
-          <Ionicons name="people-outline" size={iconSize} color="#fff" />
-          <Text style={styles.navText}>COMMUNITY</Text>
-        </View>
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={styles.navItem}
-        onPress={() => navigation.navigate('Scan')}
-      >
-        <View style={styles.navButton}>
-          <Ionicons name="camera-outline" size={iconSize} color="#fff" />
-          <Text style={styles.navText}>SCAN</Text>
-        </View>
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={styles.navItem}
-        onPress={() => navigation.navigate('Market')}
-      >
-        <View style={styles.navButton}>
-          <Ionicons name="storefront-outline" size={iconSize} color="#fff" />
-          <Text style={styles.navText}>MARKET</Text>
-        </View>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-// Custom Header with Navigation
+// Custom Header - No wrapper View
 function CustomHeader({ navigation }: { navigation: any }) {
   const [mobileMenuVisible, setMobileMenuVisible] = useState(false);
   const [screenWidth, setScreenWidth] = useState(getScreenWidth());
@@ -227,7 +148,6 @@ function CustomHeader({ navigation }: { navigation: any }) {
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({ window }) => {
       setScreenWidth(window.width);
-      // Close mobile menu if screen becomes larger
       if (window.width >= 768 && mobileMenuVisible) {
         setMobileMenuVisible(false);
       }
@@ -237,17 +157,9 @@ function CustomHeader({ navigation }: { navigation: any }) {
   }, [mobileMenuVisible]);
 
   return (
-    <View>
-      {/* Header with hamburger menu handler for mobile */}
+    <>
       <Header onMenuPress={isMobile ? () => setMobileMenuVisible(true) : undefined} />
       
-      {/* Search Bar - Always visible */}
-      <SearchBar />
-      
-      {/* Desktop/Tablet Navigation - Only show on larger screens */}
-      {!isMobile && <NavigationMenu navigation={navigation} />}
-      
-      {/* Mobile Menu Modal - Only render on mobile */}
       {isMobile && (
         <MobileMenuModal 
           visible={mobileMenuVisible}
@@ -255,11 +167,11 @@ function CustomHeader({ navigation }: { navigation: any }) {
           navigation={navigation}
         />
       )}
-    </View>
+    </>
   );
 }
 
-// Community Stack Navigator - ADDED THIS
+// Community Stack Navigator
 function CommunityStackNavigator() {
   return (
     <CommunityStackNav.Navigator
@@ -269,18 +181,22 @@ function CommunityStackNavigator() {
     >
       <CommunityStackNav.Screen name="Community" component={CommunityScreen} />
       <CommunityStackNav.Screen name="PostDetail" component={PostDetailScreen} />
-      <CommunityStackNav.Screen name="CreatePost" component={CreatePostScreen} />
       <CommunityStackNav.Screen name="EditPost" component={EditPostScreen} />
     </CommunityStackNav.Navigator>
   );
 }
 
-// Main Tab Navigator with custom Header
+// Main Tab Navigator
 function MainTabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route, navigation }) => ({
         header: () => <CustomHeader navigation={navigation} />,
+        headerStyle: {
+          elevation: 0,
+          shadowOpacity: 0,
+          borderBottomWidth: 0,
+        },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap;
 
@@ -288,7 +204,7 @@ function MainTabNavigator() {
             case 'Home':
               iconName = focused ? 'home' : 'home-outline';
               break;
-            case 'CommunityStack':  // Updated from Community
+            case 'CommunityStack':
               iconName = focused ? 'people' : 'people-outline';
               break;
             case 'Scan':
@@ -303,6 +219,7 @@ function MainTabNavigator() {
             default:
               iconName = 'home-outline';
           }
+          
           if (route.name === 'Scan') {
             return (
               <View style={styles.scanButtonContainer}>
@@ -318,7 +235,7 @@ function MainTabNavigator() {
         tabBarActiveTintColor: '#7FA66D',
         tabBarInactiveTintColor: '#999',
         tabBarStyle: {
-          display: 'none', // Hide the bottom tab bar
+          display: 'none',
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -339,8 +256,8 @@ function MainTabNavigator() {
         }}
       />
       <Tab.Screen 
-        name="CommunityStack"  // Changed from Community to CommunityStack
-        component={CommunityStackNavigator}  // Use the stack navigator
+        name="CommunityStack"
+        component={CommunityStackNavigator}
         options={{ 
           title: 'Community',
           tabBarLabel: 'Community',
@@ -374,7 +291,7 @@ function MainTabNavigator() {
   );
 }
 
-// Root Stack Navigator (handles Screens outside of tabs)
+// Root Stack Navigator
 export default function AppNavigator() {
   return (
     <NavigationContainer>
@@ -391,7 +308,6 @@ export default function AppNavigator() {
             presentation: 'modal',
           }}
         />
-        {/* Chatbot Screen */}
         <Stack.Screen 
           name="Chatbot" 
           component={ChatbotScreen}
@@ -406,10 +322,6 @@ export default function AppNavigator() {
 }
 
 const styles = StyleSheet.create({
-  placeholder: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
   scanButtonContainer: {
     position: 'absolute',
     top: -25,
@@ -431,54 +343,6 @@ const styles = StyleSheet.create({
     borderWidth: 5,
     borderColor: '#ffffff',
   },
-  searchBarContainer: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  searchInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#333',
-  },
-  navigationMenu: {
-    backgroundColor: '#2d5a3d',
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  navItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  navButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  navText: {
-    fontSize: 12,
-    color: '#fff',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  // Mobile Menu Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

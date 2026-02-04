@@ -34,6 +34,9 @@ export const authenticate = (data: AuthData, next: () => void): void => {
             if (user.id) {
                 sessionStorage.setItem('userId', user.id);
             }
+            
+            // Dispatch custom event to notify components about auth change
+            window.dispatchEvent(new CustomEvent('authChange', { detail: { authenticated: true, user } }));
         }
     }
     next();
@@ -56,19 +59,31 @@ export const getUser = (): User | false => {
     return false;
 };
 
-export const logout = (next: () => void): void => {
+export const logout = (next?: () => void): void => {
     if (typeof window !== 'undefined') {
-        // Clear ALL authentication-related items to prevent bugs
+        // Clear ALL authentication-related items from sessionStorage
         sessionStorage.removeItem('token');
         sessionStorage.removeItem('jwt');
         sessionStorage.removeItem('user');
         sessionStorage.removeItem('userId');
-        sessionStorage.removeItem('accessToken');  // Just in case
+        sessionStorage.removeItem('accessToken');
         
-        // Alternative: Clear all sessionStorage (use with caution)
-        // sessionStorage.clear();
+        // Also clear localStorage in case it's being used anywhere
+        localStorage.removeItem('token');
+        localStorage.removeItem('jwt');
+        localStorage.removeItem('user');
+        localStorage.removeItem('userId');
+        localStorage.removeItem('accessToken');
+        
+        // Dispatch custom event to notify components about auth change
+        window.dispatchEvent(new CustomEvent('authChange', { detail: { authenticated: false, user: null } }));
+        
+        // Show success message
+        successMsg('Logged out successfully');
     }
-    next();
+    if (next) {
+        next();
+    }
 };
 
 export const getToken = (): string | false => {

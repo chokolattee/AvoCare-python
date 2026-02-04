@@ -5,7 +5,7 @@ from cloudinary import uploader as cloudinary_uploader
 from models.post import Post, Comment
 from models.user import User
 from middleware.auth_middleware import token_required
-from utils.profanity_filter import censor_profanity, contains_profanity
+from utils.profanity_filter import contains_profanity
 
 forum_routes = Blueprint('forum_routes', __name__)
 
@@ -22,27 +22,39 @@ def get_posts():
     if request.method == 'OPTIONS':
         return '', 204
     
-    posts = Post.objects().order_by('-created_at')
+    posts = Post.objects(archived=False).order_by('-created_at')
     output = []
     
     for post in posts:
+        # Handle both old single image and new multiple images
+        image_urls = []
+        if hasattr(post, 'image_urls') and post.image_urls:
+            image_urls = post.image_urls
+        elif hasattr(post, 'image_url') and post.image_url:
+            image_urls = [post.image_url]
+            
         output.append({
             'id': str(post.id),
             'title': post.title,
             'content': post.content,
             'username': post.author_name,
             'user_id': str(post.author.id) if post.author else None,
+            'author_image': post.author.image if post.author and post.author.image else '',
             'category': post.category,
-            'imageUrl': post.image_url if post.image_url else None,
+            'imageUrls': image_urls,
             'likes': post.like_count,
             'comments_count': len(post.comments),
             'created_at': post.created_at.isoformat() + 'Z' if post.created_at else None,
             'updated_at': (post.updated_at.isoformat() + 'Z' if hasattr(post, 'updated_at') and post.updated_at else (post.created_at.isoformat() + 'Z' if post.created_at else None)),
+            'archived': post.archived if hasattr(post, 'archived') else False,
             'comments': [{
                 'id': str(c.id) if hasattr(c, 'id') and c.id else None,
                 'content': c.content,
                 'author_name': c.author_name,
                 'author_id': c.author_id if hasattr(c, 'author_id') else None,
+                'reply_to': c.reply_to if hasattr(c, 'reply_to') else None,
+                'likes': len(c.liked_by) if hasattr(c, 'liked_by') and c.liked_by else 0,
+                'liked_by': c.liked_by if hasattr(c, 'liked_by') and c.liked_by else [],
                 'created_at': c.created_at.isoformat() + 'Z' if c.created_at else None,
             } for c in post.comments]
         })
@@ -81,40 +93,53 @@ def create_post():
         return jsonify({'error': 'title and content are required'}), 400
 
     # ---------------------------------------------------------------------------
-    # AUTO-CENSOR PROFANITY - Automatically clean the text
+    # REJECT PROFANITY - Do not allow posts with bad words
     # ---------------------------------------------------------------------------
-    was_censored = False
-    original_title = title
-    original_content = content
-    
-    # Censor title if it contains profanity
     if contains_profanity(title):
-        title = censor_profanity(title)
-        was_censored = True
+        return jsonify({
+            'error': 'Title contains inappropriate language. Please remove offensive words and try again.'
+        }), 400
     
-    # Censor content if it contains profanity
     if contains_profanity(content):
-        content = censor_profanity(content)
-        was_censored = True
+        return jsonify({
+            'error': 'Content contains inappropriate language. Please remove offensive words and try again.'
+        }), 400
 
     # ---------------------------------------------------------------------------
-    # Upload image to Cloudinary (if provided)
+    # Upload multiple images to Cloudinary (if provided)
     # ---------------------------------------------------------------------------
-    image_url = None
-    if image_file:
+    image_urls = []
+    
+    # Handle multiple images from form data
+    image_files = request.files.getlist('images')
+    for img_file in image_files[:5]:  # Limit to 5 images
+        if img_file:
+            try:
+                upload_result = cloudinary_uploader.upload(
+                    img_file,
+                    folder='avocare/forum',
+                    resource_type='image'
+                )
+                image_urls.append(upload_result.get('secure_url'))
+            except Exception as e:
+                print(f"Cloudinary upload error: {e}")
+                return jsonify({'error': f'Image upload failed: {str(e)}'}), 500
+    
+    # Fallback: handle single image for backward compatibility
+    if not image_urls and image_file:
         try:
             upload_result = cloudinary_uploader.upload(
                 image_file,
                 folder='avocare/forum',
                 resource_type='image'
             )
-            image_url = upload_result.get('secure_url')
+            image_urls.append(upload_result.get('secure_url'))
         except Exception as e:
             print(f"Cloudinary upload error: {e}")
             return jsonify({'error': 'Image upload failed'}), 500
 
     # ---------------------------------------------------------------------------
-    # Create post with censored content
+    # Create post
     # ---------------------------------------------------------------------------
     author_name = getattr(user, 'name', 'Anonymous')
 
@@ -122,34 +147,32 @@ def create_post():
         title=title,
         content=content,
         category=category,
-        image_url=image_url,
+        image_urls=image_urls,
         author=user,
-        author_name=author_name
+        author_name=author_name,
+        archived=False
     )
     new_post.save()
     
     # Build response
     response_data = {
-        'message': 'Post created',
+        'message': 'Post created successfully',
         'post': {
             'id': str(new_post.id),
             'title': new_post.title,
             'content': new_post.content,
             'username': author_name,
             'user_id': str(user.id),
+            'author_image': user.image if user.image else '',
             'category': new_post.category,
-            'imageUrl': new_post.image_url,
+            'imageUrls': new_post.image_urls,
             'likes': 0,
             'comments_count': 0,
             'created_at': new_post.created_at.isoformat() + 'Z' if new_post.created_at else None,
+            'archived': False,
             'comments': []
         }
     }
-    
-    # Notify user if content was censored
-    if was_censored:
-        response_data['censored'] = True
-        response_data['message'] = 'Post created with inappropriate words censored'
     
     return jsonify(response_data), 201
 
@@ -195,21 +218,39 @@ def update_post(post_id):
         image_file   = request.files.get('image')
 
     # ---------------------------------------------------------------------------
-    # AUTO-CENSOR PROFANITY in updated fields
+    # REJECT PROFANITY in updated fields
     # ---------------------------------------------------------------------------
-    was_censored = False
-    
     if title and contains_profanity(title):
-        title = censor_profanity(title)
-        was_censored = True
+        return jsonify({
+            'error': 'Title contains inappropriate language. Please remove offensive words and try again.'
+        }), 400
     
     if content and contains_profanity(content):
-        content = censor_profanity(content)
-        was_censored = True
+        return jsonify({
+            'error': 'Content contains inappropriate language. Please remove offensive words and try again.'
+        }), 400
 
     # ---------------------------------------------------------------------------
-    # Upload new image to Cloudinary (if provided)
+    # Upload new images to Cloudinary (if provided)
     # ---------------------------------------------------------------------------
+    # Handle multiple new images
+    image_files = request.files.getlist('images')
+    for img_file in image_files[:5]:  # Limit to 5 images
+        if img_file:
+            try:
+                upload_result = cloudinary_uploader.upload(
+                    img_file,
+                    folder='avocare/forum',
+                    resource_type='image'
+                )
+                if not hasattr(post, 'image_urls') or post.image_urls is None:
+                    post.image_urls = []
+                post.image_urls.append(upload_result.get('secure_url'))
+            except Exception as e:
+                print(f"Cloudinary upload error: {e}")
+                return jsonify({'error': f'Image upload failed: {str(e)}'}), 500
+    
+    # Handle single image for backward compatibility
     if image_file:
         try:
             upload_result = cloudinary_uploader.upload(
@@ -217,13 +258,18 @@ def update_post(post_id):
                 folder='avocare/forum',
                 resource_type='image'
             )
-            post.image_url = upload_result.get('secure_url')
+            if not hasattr(post, 'image_urls') or post.image_urls is None:
+                post.image_urls = []
+            post.image_urls.append(upload_result.get('secure_url'))
         except Exception as e:
             print(f"Cloudinary upload error: {e}")
             return jsonify({'error': 'Image upload failed'}), 500
     elif remove_image:
-        # Frontend explicitly asked to clear the existing image
-        post.image_url = None
+        # Frontend explicitly asked to clear the existing images
+        if hasattr(post, 'image_urls'):
+            post.image_urls = []
+        if hasattr(post, 'image_url'):
+            post.image_url = None
 
     # ---------------------------------------------------------------------------
     # Update text fields with censored content
@@ -240,6 +286,13 @@ def update_post(post_id):
     
     post.save()
     
+    # Handle both old single image and new multiple images
+    image_urls = []
+    if hasattr(post, 'image_urls') and post.image_urls:
+        image_urls = post.image_urls
+    elif hasattr(post, 'image_url') and post.image_url:
+        image_urls = [post.image_url]
+    
     response_data = {
         'message': 'Post updated successfully',
         'post': {
@@ -247,22 +300,17 @@ def update_post(post_id):
             'title': post.title,
             'content': post.content,
             'category': post.category,
-            'imageUrl': post.image_url
+            'imageUrls': image_urls
         }
     }
     
-    # Notify user if content was censored
-    if was_censored:
-        response_data['censored'] = True
-        response_data['message'] = 'Post updated with inappropriate words censored'
-    
     return jsonify(response_data), 200
 
-# --- 4. Delete a Post ---
-@forum_routes.route('/<post_id>', methods=['DELETE', 'OPTIONS'], strict_slashes=False)
+# --- 4. Archive a Post ---
+@forum_routes.route('/<post_id>/archive', methods=['PUT', 'OPTIONS'], strict_slashes=False)
 @token_required
-def delete_post(post_id):
-    """Delete a post (only by author)"""
+def archive_post(post_id):
+    """Archive a post (only by author)"""
     
     # Handle CORS preflight
     if request.method == 'OPTIONS':
@@ -276,11 +324,83 @@ def delete_post(post_id):
     
     # Check if user is the author
     if str(post.author.id) != str(user.id):
-        return jsonify({'error': 'Unauthorized: You can only delete your own posts'}), 403
+        return jsonify({'error': 'Unauthorized: You can only archive your own posts'}), 403
     
-    post.delete()
+    post.archived = True
+    post.save()
     
-    return jsonify({'message': 'Post deleted successfully'}), 200
+    return jsonify({'message': 'Post archived successfully'}), 200
+
+# --- 4b. Unarchive a Post ---
+@forum_routes.route('/<post_id>/unarchive', methods=['PUT', 'OPTIONS'], strict_slashes=False)
+@token_required
+def unarchive_post(post_id):
+    """Unarchive a post (only by author)"""
+    
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    user = request.current_user
+    post = Post.objects(id=post_id).first()
+    
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+    
+    # Check if user is the author
+    if str(post.author.id) != str(user.id):
+        return jsonify({'error': 'Unauthorized: You can only unarchive your own posts'}), 403
+    
+    post.archived = False
+    post.save()
+    
+    return jsonify({'message': 'Post unarchived successfully'}), 200
+
+# --- 4c. Get Archived Posts ---
+@forum_routes.route('/archived', methods=['GET', 'OPTIONS'], strict_slashes=False)
+@token_required
+def get_archived_posts():
+    """Get archived posts for current user"""
+    
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    user = request.current_user
+    posts = Post.objects(author=user, archived=True).order_by('-created_at')
+    output = []
+    
+    for post in posts:
+        # Handle both old single image and new multiple images
+        image_urls = []
+        if hasattr(post, 'image_urls') and post.image_urls:
+            image_urls = post.image_urls
+        elif hasattr(post, 'image_url') and post.image_url:
+            image_urls = [post.image_url]
+            
+        output.append({
+            'id': str(post.id),
+            'title': post.title,
+            'content': post.content,
+            'username': post.author_name if post.author_name else 'Anonymous',
+            'user_id': str(post.author.id) if post.author else None,
+            'category': post.category,
+            'imageUrls': image_urls,
+            'likes': post.like_count,
+            'comments_count': len(post.comments) if post.comments else 0,
+            'created_at': post.created_at.isoformat() + 'Z' if post.created_at else None,
+            'updated_at': post.updated_at.isoformat() + 'Z' if hasattr(post, 'updated_at') and post.updated_at else None,
+            'archived': True,
+            'comments': [
+                {
+                    'content': c.content,
+                    'author_name': c.author_name,
+                    'created_at': c.created_at.isoformat() + 'Z' if c.created_at else None
+                } for c in (post.comments or [])
+            ]
+        })
+    
+    return jsonify(output), 200
 
 # --- 5. Like / Unlike (Toggle) ---
 @forum_routes.route('/<post_id>/like', methods=['PUT', 'OPTIONS'], strict_slashes=False)
@@ -329,32 +449,27 @@ def add_comment(post_id):
         return jsonify({'error': 'content is required'}), 400
 
     comment_content = data.get('content')
+    reply_to = data.get('reply_to')  # Optional: comment ID to reply to
     
     # ---------------------------------------------------------------------------
-    # AUTO-CENSOR PROFANITY in comment
+    # REJECT PROFANITY in comment
     # ---------------------------------------------------------------------------
-    was_censored = False
     if contains_profanity(comment_content):
-        comment_content = censor_profanity(comment_content)
-        was_censored = True
+        return jsonify({
+            'error': 'Comment contains inappropriate language. Please remove offensive words and try again.'
+        }), 400
 
     comment = Comment(
         content=comment_content,
         author_name=getattr(user, 'name', 'Anonymous'),
-        author_id=str(user.id)
+        author_id=str(user.id),
+        reply_to=reply_to if reply_to else None
     )
     
     post.comments.append(comment)
     post.save()
     
-    response_data = {'message': 'Comment added'}
-    
-    # Notify user if comment was censored
-    if was_censored:
-        response_data['censored'] = True
-        response_data['message'] = 'Comment added with inappropriate words censored'
-    
-    return jsonify(response_data), 200
+    return jsonify({'message': 'Comment added successfully'}), 201
 
 # --- 7. Update Comment ---
 @forum_routes.route('/<post_id>/comment/<comment_index>', methods=['PUT', 'OPTIONS'], strict_slashes=False)
@@ -404,25 +519,18 @@ def update_comment(post_id, comment_index):
     updated_content = data.get('content')
     
     # ---------------------------------------------------------------------------
-    # AUTO-CENSOR PROFANITY in updated comment
+    # REJECT PROFANITY in updated comment
     # ---------------------------------------------------------------------------
-    was_censored = False
     if contains_profanity(updated_content):
-        updated_content = censor_profanity(updated_content)
-        was_censored = True
+        return jsonify({
+            'error': 'Comment contains inappropriate language. Please remove offensive words and try again.'
+        }), 400
     
     # Update comment content
     comment.content = updated_content
     post.save()
     
-    response_data = {'message': 'Comment updated successfully'}
-    
-    # Notify user if comment was censored
-    if was_censored:
-        response_data['censored'] = True
-        response_data['message'] = 'Comment updated with inappropriate words censored'
-    
-    return jsonify(response_data), 200
+    return jsonify({'message': 'Comment updated successfully'}), 200
 
 # --- 8. Delete Comment ---
 @forum_routes.route('/<post_id>/comment/<comment_index>', methods=['DELETE', 'OPTIONS'], strict_slashes=False)
@@ -471,3 +579,59 @@ def delete_comment(post_id, comment_index):
     post.save()
     
     return jsonify({'message': 'Comment deleted successfully'}), 200
+
+# --- 9. Like / Unlike Comment ---
+@forum_routes.route('/<post_id>/comment/<comment_index>/like', methods=['PUT', 'OPTIONS'], strict_slashes=False)
+@token_required
+def like_comment(post_id, comment_index):
+    """Toggle like on a comment"""
+    
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    user = request.current_user
+    post = Post.objects(id=post_id).first()
+    
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+    
+    try:
+        if comment_index.isdigit():
+            idx = int(comment_index)
+            if idx >= len(post.comments):
+                return jsonify({'error': 'Comment not found'}), 404
+            comment = post.comments[idx]
+        else:
+            comment = None
+            for i, c in enumerate(post.comments):
+                if hasattr(c, 'id') and str(c.id) == comment_index:
+                    comment = c
+                    idx = i
+                    break
+            if not comment:
+                return jsonify({'error': 'Comment not found'}), 404
+    except (ValueError, IndexError):
+        return jsonify({'error': 'Invalid comment identifier'}), 400
+    
+    # Initialize liked_by if it doesn't exist
+    if not hasattr(comment, 'liked_by') or comment.liked_by is None:
+        comment.liked_by = []
+    
+    user_id = str(user.id)
+    
+    # Toggle like
+    if user_id in comment.liked_by:
+        comment.liked_by.remove(user_id)
+        action = 'unliked'
+    else:
+        comment.liked_by.append(user_id)
+        action = 'liked'
+    
+    post.save()
+    
+    return jsonify({
+        'message': action,
+        'likes': len(comment.liked_by),
+        'comment_index': idx
+    }), 200

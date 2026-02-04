@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   SafeAreaView,
   ScrollView,
   TextInput,
@@ -17,7 +16,9 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Yup from 'yup';
 import { API_BASE_URL as BASE_URL } from '../../config/api';
+import { styles } from '../../Styles/PostDetailScreen.styles';
 
 // ---------------------------------------------------------------------------
 // Navigation types
@@ -26,7 +27,7 @@ type CommunityStackParamList = {
   Community: undefined;
   PostDetail: { postId: string };
   CreatePost: undefined;
-  EditPost: { postId: string; title: string; content: string; category: string; imageUrl?: string };
+  EditPost: { postId: string; title: string; content: string; category: string; imageUrls?: string[] };
 };
 
 type PostDetailScreenNavigationProp = StackNavigationProp<CommunityStackParamList, 'PostDetail'>;
@@ -45,6 +46,9 @@ interface CommentData {
   content: string;
   author_name: string;
   author_id?: string;
+  reply_to?: string | null;
+  likes?: number;
+  liked_by?: string[];
   created_at: string;
 }
 
@@ -54,8 +58,9 @@ interface PostData {
   content: string;
   username: string;
   user_id?: string;
+  author_image?: string;
   category: string;
-  imageUrl?: string;
+  imageUrls?: string[];
   likes: number;
   comments_count: number;
   created_at: string;
@@ -67,6 +72,54 @@ interface PostData {
 // Constants
 // ---------------------------------------------------------------------------
 const FORUM_URL = `${BASE_URL}/api/forum`;
+
+// Profanity word list (matches backend)
+const BAD_WORDS = [
+  'fuck', 'shit', 'damn', 'ass', 'bitch', 'bastard', 'hell', 'crap',
+  'piss', 'dick', 'cock', 'pussy', 'slut', 'whore', 'fag', 'nigger',
+  'puta', 'gago', 'putangina', 'tangina', 'tarantado', 'bobo', 'tanga',
+  'ulol', 'leche', 'hayop', 'animal', 'peste', 'putang ina', 'tang ina',
+  'gago ka', 'tanga ka', 'bobo ka', 'yawa', 'buang', 'ukinam'
+];
+
+function containsProfanity(text: string): boolean {
+  const lowerText = text.toLowerCase();
+  return BAD_WORDS.some(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'i');
+    return regex.test(lowerText);
+  });
+}
+
+function findProfanityWords(text: string): string[] {
+  const lowerText = text.toLowerCase();
+  const foundWords: string[] = [];
+  
+  BAD_WORDS.forEach(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'i');
+    if (regex.test(lowerText)) {
+      foundWords.push(word);
+    }
+  });
+  
+  return foundWords;
+}
+
+// Yup validation schema for comments
+const commentValidationSchema = Yup.object().shape({
+  content: Yup.string()
+    .required('Comment is required')
+    .min(1, 'Comment cannot be empty')
+    .test('no-profanity', function(value) {
+      if (!value) return true;
+      const profanityWords = findProfanityWords(value);
+      if (profanityWords.length > 0) {
+        return this.createError({
+          message: `Comment contains inappropriate language: "${profanityWords.join('", "')}"`,
+        });
+      }
+      return true;
+    }),
+});
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -140,10 +193,18 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [commentError, setCommentError] = useState<string>('');
 
   // Edit comment state
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
+  
+  // Reply comment state
+  const [replyingToCommentId, setReplyingToCommentId] = useState<string | null>(null);
+  const [replyingToAuthorName, setReplyingToAuthorName] = useState<string>('');
+  
+  // Comment likes state
+  const [commentLikes, setCommentLikes] = useState<Record<string, { count: number; isLiked: boolean }>>({});
 
   // Get current user ID and login status
   useEffect(() => {
@@ -211,6 +272,17 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       if (found) {
         setPost(found);
         setLikeCount(found.likes);
+        
+        // Initialize comment likes
+        const likes: Record<string, { count: number; isLiked: boolean }> = {};
+        found.comments.forEach((comment, index) => {
+          const commentId = comment.id || String(index);
+          likes[commentId] = {
+            count: comment.likes || 0,
+            isLiked: currentUserId ? (comment.liked_by?.includes(currentUserId) || false) : false,
+          };
+        });
+        setCommentLikes(likes);
       } else {
         Alert.alert('Error', 'Post not found.');
         navigation.goBack();
@@ -221,7 +293,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     } finally {
       setLoading(false);
     }
-  }, [postId, navigation]);
+  }, [postId, navigation, currentUserId]);
 
   useEffect(() => {
     fetchPost();
@@ -331,7 +403,21 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       return;
     }
 
-    if (!commentText.trim()) return;
+    if (!commentText.trim()) {
+      setCommentError('Comment cannot be empty');
+      return;
+    }
+
+    // Validate using Yup schema
+    try {
+      await commentValidationSchema.validate({ content: commentText.trim() });
+      setCommentError(''); // Clear any previous errors
+    } catch (validationError) {
+      if (validationError instanceof Yup.ValidationError) {
+        setCommentError(validationError.message);
+        return;
+      }
+    }
 
     const token = await AsyncStorage.getItem('token');
     if (!token) {
@@ -347,26 +433,25 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ content: commentText.trim() }),
+        body: JSON.stringify({ 
+          content: commentText.trim(),
+          reply_to: replyingToCommentId 
+        }),
       });
 
       if (!res.ok) {
         const err = await res.json();
-        Alert.alert('Error', err.error || 'Failed to post comment.');
+        setCommentError(err.error || 'Failed to post comment.');
         return;
       }
 
-      const responseData = await res.json();
-      
-      // Show censorship notification if comment was censored
-      if (responseData.censored) {
-        Alert.alert('Notice', responseData.message || 'Comment added with inappropriate words censored');
-      }
-
       setCommentText('');
+      setCommentError('');
+      setReplyingToCommentId(null);
+      setReplyingToAuthorName('');
       await fetchPost();
     } catch (err) {
-      Alert.alert('Network Error', 'Could not connect to the server.');
+      setCommentError('Could not connect to the server.');
       console.error(err);
     } finally {
       setSubmittingComment(false);
@@ -426,6 +511,76 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const handleCancelEdit = () => {
     setEditingCommentId(null);
     setEditCommentText('');
+  };
+
+  // -----------------------------------------------------------------------
+  // Reply to Comment
+  // -----------------------------------------------------------------------
+  const handleReplyToComment = (commentId: string, authorName: string) => {
+    if (!isLoggedIn) {
+      Alert.alert('Login Required', 'Please login to reply to comments.');
+      return;
+    }
+    setReplyingToCommentId(commentId);
+    setReplyingToAuthorName(authorName);
+  };
+
+  const handleCancelReply = () => {
+    setReplyingToCommentId(null);
+    setReplyingToAuthorName('');
+  };
+
+  // -----------------------------------------------------------------------
+  // Like / Unlike Comment
+  // -----------------------------------------------------------------------
+  const handleLikeComment = async (commentId: string, commentIndex: number) => {
+    if (!isLoggedIn) {
+      Alert.alert('Login Required', 'Please login to like comments.');
+      return;
+    }
+
+    const token = await AsyncStorage.getItem('token');
+    if (!token) return;
+
+    const currentState = commentLikes[commentId] || { count: 0, isLiked: false };
+    const wasLiked = currentState.isLiked;
+
+    // Optimistic update
+    setCommentLikes(prev => ({
+      ...prev,
+      [commentId]: {
+        count: currentState.count + (wasLiked ? -1 : 1),
+        isLiked: !wasLiked,
+      },
+    }));
+
+    try {
+      const res = await fetch(`${FORUM_URL}/${postId}/comment/${commentIndex}/like`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) throw new Error('Failed to like comment');
+
+      const data = await res.json();
+      setCommentLikes(prev => ({
+        ...prev,
+        [commentId]: {
+          count: data.likes,
+          isLiked: data.message === 'liked',
+        },
+      }));
+    } catch (err) {
+      // Revert on error
+      setCommentLikes(prev => ({
+        ...prev,
+        [commentId]: currentState,
+      }));
+      console.error('Comment like failed:', err);
+    }
   };
 
   // -----------------------------------------------------------------------
@@ -517,7 +672,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                     title: post.title,
                     content: post.content,
                     category: post.category,
-                    imageUrl: post.imageUrl,
+                    imageUrls: post.imageUrls,
                   })
                 }
                 style={styles.headerButton}
@@ -533,11 +688,19 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
           )}
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
+        <ScrollView 
+          showsVerticalScrollIndicator={false} 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+        >
           {/* Author row */}
           <View style={styles.authorRow}>
             <View style={styles.avatar}>
-              <Ionicons name="person" size={22} color="#5d873e" />
+              {post.author_image ? (
+                <Image source={{ uri: post.author_image }} style={styles.avatarImage} />
+              ) : (
+                <Ionicons name="person" size={22} color="#5d873e" />
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.authorName}>{post.username}</Text>
@@ -557,9 +720,25 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             </View>
           </View>
 
-          {/* Post image */}
-          {post.imageUrl && (
-            <Image source={{ uri: post.imageUrl }} style={styles.postImage} />
+          {/* Post images */}
+          {post.imageUrls && post.imageUrls.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.imageScrollContainer}
+              contentContainerStyle={styles.imageScrollContent}
+            >
+              {post.imageUrls.map((uri, idx) => (
+                <Image
+                  key={idx}
+                  source={{ uri }}
+                  style={[
+                    styles.postImage,
+                    idx > 0 && { marginLeft: 8 }
+                  ]}
+                />
+              ))}
+            </ScrollView>
           )}
 
           {/* Post body */}
@@ -652,7 +831,49 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                       </View>
                     </View>
                   ) : (
-                    <Text style={styles.commentBody}>{comment.content}</Text>
+                    <>
+                      {/* Show reply indicator if this is a reply */}
+                      {comment.reply_to && (
+                        <View style={styles.replyBadgeContainer}>
+                          <Ionicons name="return-down-forward-outline" size={12} color="#5d873e" />
+                          <Text style={styles.replyBadgeText}>Reply</Text>
+                        </View>
+                      )}
+                      <Text style={styles.commentBody}>{comment.content}</Text>
+                      
+                      {/* Like and Reply buttons */}
+                      <View style={styles.commentActionBar}>
+                        <TouchableOpacity
+                          style={styles.commentLikeButton}
+                          onPress={() => handleLikeComment(commentId, index)}
+                          disabled={!isLoggedIn}
+                        >
+                          <Ionicons
+                            name={commentLikes[commentId]?.isLiked ? 'heart' : 'heart-outline'}
+                            size={16}
+                            color={commentLikes[commentId]?.isLiked ? '#e74c3c' : '#5d873e'}
+                          />
+                          <Text
+                            style={[
+                              styles.commentLikeText,
+                              commentLikes[commentId]?.isLiked && styles.commentLikeTextActive
+                            ]}
+                          >
+                            {commentLikes[commentId]?.count || 0}
+                          </Text>
+                        </TouchableOpacity>
+                        
+                        {isLoggedIn && (
+                          <TouchableOpacity
+                            style={styles.commentReplyButton}
+                            onPress={() => handleReplyToComment(commentId, comment.author_name)}
+                          >
+                            <Ionicons name="chatbubble-outline" size={14} color="#5d873e" />
+                            <Text style={styles.commentReplyText}>Reply</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </>
                   )}
                 </View>
               );
@@ -681,211 +902,53 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         {/* Add Comment Input - ONLY IF LOGGED IN */}
         {isLoggedIn && (
           <View style={styles.commentInputContainer}>
-            <TextInput
-              style={styles.commentInput}
-              placeholder="Write a comment…"
-              placeholderTextColor="#999"
-              value={commentText}
-              onChangeText={setCommentText}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.sendButton, submittingComment && styles.sendButtonDisabled]}
-              onPress={handleAddComment}
-              disabled={submittingComment || !commentText.trim()}
-            >
-              {submittingComment ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Ionicons name="send" size={20} color="#fff" />
+            <View style={styles.commentInputWrapper}>
+              {/* Reply indicator */}
+              {replyingToCommentId && (
+                <View style={styles.replyIndicator}>
+                  <Ionicons name="return-down-forward-outline" size={16} color="#5d873e" />
+                  <Text style={styles.replyIndicatorText}>
+                    Replying to {replyingToAuthorName}
+                  </Text>
+                  <TouchableOpacity onPress={handleCancelReply}>
+                    <Ionicons name="close-circle" size={20} color="#999" />
+                  </TouchableOpacity>
+                </View>
               )}
-            </TouchableOpacity>
+              <View style={styles.commentInputRow}>
+                <TextInput
+                  style={styles.commentInput}
+                  placeholder={replyingToCommentId ? "Write a reply…" : "Write a comment…"}
+                  placeholderTextColor="#999"
+                  value={commentText}
+                  onChangeText={(text) => {
+                    setCommentText(text);
+                    if (commentError) setCommentError(''); // Clear error on typing
+                  }}
+                  multiline
+                />
+                <TouchableOpacity
+                  style={[styles.sendButton, submittingComment && styles.sendButtonDisabled]}
+                  onPress={handleAddComment}
+                  disabled={submittingComment || !commentText.trim()}
+                >
+                  {submittingComment ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="send" size={20} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              </View>
+              {/* Show validation error */}
+              {commentError ? (
+                <Text style={styles.commentErrorText}>{commentError}</Text>
+              ) : null}
+            </View>
           </View>
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-
-  header: {
-    backgroundColor: '#5d873e',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 18,
-  },
-  backButton: { padding: 4 },
-  headerTitle: { flex: 1, fontSize: 18, fontWeight: 'bold', color: '#fff', textAlign: 'center' },
-  headerActions: { flexDirection: 'row', gap: 8 },
-  headerButton: { padding: 4 },
-
-  scrollView: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
-
-  authorRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#e8f5e9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#5d873e',
-    marginRight: 10,
-  },
-  authorName: { fontSize: 15, fontWeight: '600', color: '#5d873e' },
-  timeContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
-  authorTime: { fontSize: 12, color: '#888' },
-  editedBadge: { fontSize: 11, color: '#999', marginLeft: 4, fontStyle: 'italic' },
-  categoryBadge: {
-    marginLeft: 'auto',
-    backgroundColor: '#e8f5e9',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#5d873e',
-  },
-  categoryBadgeText: { fontSize: 12, fontWeight: '600', color: '#5d873e' },
-
-  postImage: {
-    width: '100%',
-    height: 220,
-    borderRadius: 12,
-    objectFit: 'cover',
-    marginBottom: 16,
-  },
-  postContent: { fontSize: 15, color: '#444', lineHeight: 22, marginBottom: 20 },
-  likeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  likeText: { fontSize: 15, color: '#5d873e', fontWeight: '600', marginLeft: 8 },
-  likeTextActive: { color: '#e74c3c' },
-  disabledIcon: { opacity: 0.5 },
-  disabledText: { opacity: 0.5 },
-
-  divider: { height: 1, backgroundColor: '#e8e8e8', marginBottom: 20 },
-
-  commentsHeading: { fontSize: 17, fontWeight: 'bold', color: '#2d3e2d', marginBottom: 12 },
-  noComments: { fontSize: 14, color: '#999', textAlign: 'center', marginVertical: 16 },
-
-  commentCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#e8e8e8',
-  },
-  commentHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  commentAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#e8f5e9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  commentAuthor: { fontSize: 13, fontWeight: '600', color: '#5d873e', marginRight: 6 },
-  commentTime: { fontSize: 11, color: '#999', flex: 1 },
-  commentActions: { flexDirection: 'row', gap: 6 },
-  commentActionButton: { padding: 2 },
-  commentBody: { fontSize: 14, color: '#555', lineHeight: 20 },
-
-  editCommentInput: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 14,
-    color: '#333',
-    borderWidth: 1,
-    borderColor: '#5d873e',
-    marginBottom: 8,
-    minHeight: 60,
-  },
-  editActions: { flexDirection: 'row', gap: 8 },
-  saveButton: {
-    backgroundColor: '#5d873e',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  saveButtonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  cancelEditButton: {
-    backgroundColor: '#e8e8e8',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  cancelEditButtonText: { color: '#666', fontSize: 13, fontWeight: '600' },
-
-  loginPrompt: {
-    backgroundColor: '#fff',
-    marginTop: 16,
-    padding: 24,
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#5d873e',
-  },
-  loginPromptText: {
-    fontSize: 15,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 12,
-    marginBottom: 16,
-    lineHeight: 22,
-  },
-  loginPromptButton: {
-    backgroundColor: '#5d873e',
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 25,
-  },
-  loginPromptButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  commentInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#e8e8e8',
-  },
-  commentInput: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: '#333',
-    borderWidth: 1,
-    borderColor: '#e8e8e8',
-    marginRight: 10,
-    maxHeight: 100,
-  },
-  sendButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#5d873e',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sendButtonDisabled: { opacity: 0.4 },
-});
 
 export default PostDetailScreen;

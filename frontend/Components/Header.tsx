@@ -7,13 +7,12 @@ import {
   StyleSheet,
   Platform,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { StackNavigationProp } from '@react-navigation/stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { logoutMobile} from '../Utils/authMobile';
 
 const { width } = Dimensions.get('window');
 
@@ -29,24 +28,25 @@ interface User {
   role: string;
 }
 
-type NavigationProp = StackNavigationProp<{
-  Home: undefined;
-  Community: undefined;
-  Scan: undefined;
-  Market: undefined;
-  Profile: undefined;
-  Notifications: undefined;
-  AuthScreen: undefined;
-}>;
-
 const Header: React.FC<HeaderProps> = ({ onMenuPress }) => {
   const [user, setUser] = useState<User | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const navigation = useNavigation<NavigationProp>();
+  const [screenWidth, setScreenWidth] = useState(Dimensions.get('window').width);
+  const navigation = useNavigation<any>(); 
+
+  const isDesktop = screenWidth >= 768;
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setScreenWidth(window.width);
+    });
+    
+    return () => subscription?.remove();
+  }, []);
 
   const loadUser = async () => {
     try {
-      const token = await AsyncStorage.getItem('jwt');
+      const token = await AsyncStorage.getItem('jwt') || await AsyncStorage.getItem('token');
       const userData = await AsyncStorage.getItem('user');
       
       if (token && userData) {
@@ -62,6 +62,18 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress }) => {
 
   useEffect(() => {
     loadUser();
+    
+    const handleAuthChange = () => {
+      loadUser();
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('authChange', handleAuthChange);
+      
+      return () => {
+        window.removeEventListener('authChange', handleAuthChange);
+      };
+    }
   }, []);
 
   useFocusEffect(
@@ -72,56 +84,68 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress }) => {
 
   const handleLogout = async () => {
     try {
-    if (Platform.OS === 'web') {
-      // Web logout - clear sessionStorage
-      sessionStorage.removeItem('jwt');
-      sessionStorage.removeItem('token');
-      sessionStorage.removeItem('user');
-      sessionStorage.removeItem('userId');
-      sessionStorage.removeItem('accessToken');
-    } else {
-      // Mobile logout - use logoutMobile
-      await logoutMobile();
+      setDropdownOpen(false);
+      
+      await AsyncStorage.multiRemove([
+        'token',
+        'jwt',
+        'user',
+        'userId',
+        'username',
+        'accessToken'
+      ]);
+      
+      setUser(null);
+      
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('authChange'));
+      }
+      
+      navigation.navigate('Home');
+      
+      setTimeout(() => {
+        Alert.alert('Success', 'Logged out successfully');
+      }, 300);
+      
+    } catch (error) {
+      console.error('Error logging out:', error);
     }
-    
-    // Update local state
-    setUser(null);
-    setDropdownOpen(false);
-    
-    // Navigate to Home
-    navigation.navigate('Home');
-  } catch (error) {
-    console.error('Error logging out:', error);
-  }
-};
+  };
+
+  // Simple navigation handler
+  const navigateTo = (screenName: string) => {
+    console.log('Navigating to:', screenName);
+    navigation.navigate(screenName);
+  };
 
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#ffffff', '#f8fdf5']}
+        colors={['#5d873e', '#4a6e32']}
         style={styles.gradientBackground}
       >
         <View style={styles.topHeader}>
-          {width < 768 && onMenuPress && (
+          {!isDesktop && onMenuPress && (
             <TouchableOpacity 
               style={styles.menuButton} 
               onPress={onMenuPress}
               activeOpacity={0.7}
             >
               <View style={styles.menuIconContainer}>
-                <Ionicons name="menu" size={26} color="#5d873e" />
+                <Ionicons name="menu" size={26} color="#fff" />
               </View>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
             style={styles.logoContainer}
-            onPress={() => navigation.navigate('Home')}
+            onPress={() => navigateTo('Home')}
             activeOpacity={0.8}
           >
             <View style={styles.logoWrapper}>
-              <View style={styles.logoIcon}>
-                <Ionicons name="leaf" size={28} color="#5d873e" />
+              {/* Avocado Icon */}
+              <View style={styles.logoIconContainer}>
+                <Text style={styles.avocadoIcon}>🥑</Text>
               </View>
               <View style={styles.logoTextContainer}>
                 <Text style={styles.logoText}>AvoCare</Text>
@@ -129,6 +153,50 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress }) => {
               </View>
             </View>
           </TouchableOpacity>
+
+          {isDesktop && (
+            <View style={styles.navLinks}>
+              <TouchableOpacity 
+                style={styles.navLink}
+                onPress={() => navigateTo('Home')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.navLinkText}>HOME</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.navLink}
+                onPress={() => navigateTo('Community')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.navLinkText}>COMMUNITY</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.navLink}
+                onPress={() => navigateTo('Scan')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.navLinkText}>SCAN</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.navLink}
+                onPress={() => navigateTo('Market')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.navLinkText}>MARKET</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.navLink}
+                onPress={() => navigateTo('About')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.navLinkText}>ABOUT</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <View style={styles.headerActions}>
             {user ? (
@@ -176,7 +244,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress }) => {
                       style={styles.dropdownItem}
                       onPress={() => {
                         setDropdownOpen(false);
-                        navigation.navigate('Profile');
+                        navigateTo('Profile');
                       }}
                       activeOpacity={0.7}
                     >
@@ -191,7 +259,6 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress }) => {
                       style={styles.dropdownItem}
                       onPress={() => {
                         setDropdownOpen(false);
-                        // Navigate to settings if available
                       }}
                       activeOpacity={0.7}
                     >
@@ -220,11 +287,11 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress }) => {
             ) : (
               <TouchableOpacity
                 style={styles.loginButton}
-                onPress={() => navigation.navigate('AuthScreen')}
+                onPress={() => navigateTo('AuthScreen')}
                 activeOpacity={0.8}
               >
                 <LinearGradient
-                  colors={['#5d873e', '#4a6e32']}
+                  colors={['#90b481', '#7ba05b']}
                   style={styles.loginButtonGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
@@ -237,16 +304,13 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress }) => {
           </View>
         </View>
       </LinearGradient>
-      
-      {/* Subtle bottom shadow */}
-      <View style={styles.shadowLine} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
+    backgroundColor: '#5d873e',
     zIndex: 1000,
   },
   gradientBackground: {
@@ -256,12 +320,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: width < 375 ? 12 : 16,
-    paddingBottom: 12,
-  },
-  shadowLine: {
-    height: 1,
-    backgroundColor: '#e8f5e0',
+    paddingHorizontal: width < 375 ? 12 : 20,
+    paddingBottom: 16,
   },
   menuButton: {
     padding: 8,
@@ -271,25 +331,28 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f0f7ed',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   logoContainer: {
-    flex: 1,
+    marginRight: 'auto',
   },
   logoWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  logoIcon: {
+  logoIconContainer: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#f0f7ed',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  avocadoIcon: {
+    fontSize: 28,
   },
   logoTextContainer: {
     justifyContent: 'center',
@@ -297,24 +360,45 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: width < 375 ? 18 : 22,
     fontWeight: '800',
-    color: '#2d5a3d',
+    color: '#fff',
     letterSpacing: 0.5,
   },
   logoSubtext: {
     fontSize: 10,
-    color: '#5d873e',
+    color: '#e8ffd7',
     fontWeight: '500',
+    letterSpacing: 0.5,
+  },
+  navLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 24,
+    position: 'absolute',
+    left: '50%',
+    transform: [{ translateX: -150 }],
+  },
+  navLink: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  navLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
     letterSpacing: 0.5,
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginLeft: 'auto',
   },
   loginButton: {
     borderRadius: 24,
     overflow: 'hidden',
     elevation: 2,
-    shadowColor: '#5d873e',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -347,22 +431,22 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     borderWidth: 2,
-    borderColor: '#5d873e',
+    borderColor: '#fff',
   },
   defaultAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#5d873e',
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#8BC34A',
+    borderColor: '#e8ffd7',
   },
   avatarText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#5d873e',
   },
   statusDot: {
     position: 'absolute',

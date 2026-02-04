@@ -62,7 +62,8 @@ frontend/.env
 # generated native folders
 frontend/ios/
 frontend/android/
-frontend/config
+frontend/config/
+
 
 # Backend specific
 backend/data/

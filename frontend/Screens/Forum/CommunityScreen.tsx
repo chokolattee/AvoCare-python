@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   SafeAreaView,
   TextInput,
@@ -11,18 +10,22 @@ import {
   Alert,
   Image,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import * as Yup from 'yup';
 import { API_BASE_URL as BASE_URL } from '../../config/api';
+import { styles } from '../../Styles/CommunityScreen.styles';
 
 type CommunityStackParamList = {
   Community: undefined;
   PostDetail: { postId: string };
   CreatePost: undefined;
-  EditPost: { postId: string; title: string; content: string; category: string; imageUrl?: string };
+  EditPost: { postId: string; title: string; content: string; category: string; imageUrls?: string[] };
 };
 
 type RootStackParamList = {
@@ -45,12 +48,14 @@ export interface ForumPost {
   content: string;
   username: string;
   user_id?: string;
+  author_image?: string;
   category: string;
-  imageUrl?: string;
+  imageUrls?: string[];
   likes: number;
   comments_count: number;
   created_at: string;
   updated_at?: string;
+  archived?: boolean;
   comments: {
     content: string;
     author_name: string;
@@ -67,6 +72,79 @@ const categories = [
   { key: 'growing', label: 'Growing', icon: 'leaf-outline' },
   { key: 'harvest', label: 'Harvest', icon: 'nutrition-outline' },
 ];
+
+const CATEGORIES = [
+  { key: 'pest', label: 'Pests', icon: 'bug-outline' },
+  { key: 'health', label: 'Health', icon: 'heart-outline' },
+  { key: 'growing', label: 'Growing', icon: 'leaf-outline' },
+  { key: 'harvest', label: 'Harvest', icon: 'nutrition-outline' },
+  { key: 'general', label: 'General', icon: 'grid-outline' },
+];
+
+// Profanity word list (matches backend)
+const BAD_WORDS = [
+  'fuck', 'shit', 'damn', 'ass', 'bitch', 'bastard', 'hell', 'crap',
+  'piss', 'dick', 'cock', 'pussy', 'slut', 'whore', 'fag', 'nigger',
+  'puta', 'gago', 'putangina', 'tangina', 'tarantado', 'bobo', 'tanga',
+  'ulol', 'leche', 'hayop', 'animal', 'peste', 'putang ina', 'tang ina',
+  'gago ka', 'tanga ka', 'bobo ka', 'yawa', 'buang', 'ukinam'
+];
+
+function containsProfanity(text: string): boolean {
+  const lowerText = text.toLowerCase();
+  return BAD_WORDS.some(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'i');
+    return regex.test(lowerText);
+  });
+}
+
+function findProfanityWords(text: string): string[] {
+  const lowerText = text.toLowerCase();
+  const foundWords: string[] = [];
+  
+  BAD_WORDS.forEach(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'i');
+    if (regex.test(lowerText)) {
+      foundWords.push(word);
+    }
+  });
+  
+  return foundWords;
+}
+
+// Yup validation schema with profanity checking
+const postValidationSchema = Yup.object().shape({
+  title: Yup.string()
+    .required('Title is required')
+    .min(3, 'Title must be at least 3 characters')
+    .max(120, 'Title must not exceed 120 characters')
+    .test('no-profanity', function(value) {
+      if (!value) return true;
+      const profanityWords = findProfanityWords(value);
+      if (profanityWords.length > 0) {
+        return this.createError({
+          message: `Title contains inappropriate language: "${profanityWords.join('", "')}"`,
+        });
+      }
+      return true;
+    }),
+  content: Yup.string()
+    .required('Content is required')
+    .min(10, 'Content must be at least 10 characters')
+    .test('no-profanity', function(value) {
+      if (!value) return true;
+      const profanityWords = findProfanityWords(value);
+      if (profanityWords.length > 0) {
+        return this.createError({
+          message: `Content contains inappropriate language: "${profanityWords.join('", "')}"`,
+        });
+      }
+      return true;
+    }),
+  category: Yup.string()
+    .required('Category is required')
+    .oneOf(['pest', 'health', 'growing', 'harvest', 'general'], 'Invalid category'),
+});
 
 function timeAgo(dateStr: string): string {
   try {
@@ -106,8 +184,11 @@ function wasEdited(createdAt: string, updatedAt?: string): boolean {
   }
 }
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 const CommunityScreen: React.FC<Props> = ({ navigation }) => {
   const [posts, setPosts] = useState<ForumPost[]>([]);
+  const [archivedPosts, setArchivedPosts] = useState<ForumPost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [loading, setLoading] = useState(true);
@@ -116,9 +197,20 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   
-  // DELETE CONFIRMATION MODAL STATE
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [postToDelete, setPostToDelete] = useState<{ id: string; title: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'my' | 'archived'>('all');
+  
+  // CREATE POST STATE
+  const [showCreatePost, setShowCreatePost] = useState(false);
+  const [newPostTitle, setNewPostTitle] = useState('');
+  const [newPostContent, setNewPostContent] = useState('');
+  const [newPostCategory, setNewPostCategory] = useState<string>('general');
+  const [imageUris, setImageUris] = useState<string[]>([]);  // Multiple images
+  const [posting, setPosting] = useState(false);
+  const [postValidationErrors, setPostValidationErrors] = useState<{ [key: string]: string }>({});
+  
+  // ARCHIVE CONFIRMATION MODAL STATE
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [postToArchive, setPostToArchive] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     const getUserId = async () => {
@@ -130,7 +222,6 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
         setCurrentUserId(userId);
         setIsLoggedIn(isUserLoggedIn);
         
-        // Clear any stale state if not logged in
         if (!isUserLoggedIn) {
           setCurrentUserId(null);
         }
@@ -149,7 +240,23 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
       const res = await fetch(FORUM_URL);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: ForumPost[] = await res.json();
-      setPosts(data);
+      
+      setPosts(data.filter(p => !p.archived));
+      
+      // Fetch archived posts if logged in
+      if (isLoggedIn) {
+        const token = await AsyncStorage.getItem('token');
+        const archivedRes = await fetch(`${FORUM_URL}/archived`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (archivedRes.ok) {
+          const archivedData = await archivedRes.json();
+          setArchivedPosts(archivedData);
+        }
+      }
+      
       const counts: Record<string, number> = {};
       data.forEach((p) => { counts[p.id] = p.likes; });
       setLikeCounts(counts);
@@ -159,13 +266,12 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isLoggedIn]);
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => { 
       fetchPosts();
-      // Re-check login status when screen is focused - CRITICAL for logout detection
       const checkLoginStatus = async () => {
         try {
           const token = await AsyncStorage.getItem('token');
@@ -175,7 +281,6 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
           setIsLoggedIn(isUserLoggedIn);
           setCurrentUserId(userId);
           
-          // If user logged out, clear any local state
           if (!isUserLoggedIn) {
             setLikedSet(new Set());
           }
@@ -190,62 +295,179 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
     return unsubscribe;
   }, [navigation, fetchPosts]);
 
-  // Show the delete confirmation modal
-  const handleDeletePost = (postId: string, postTitle: string) => {
-    if (!isLoggedIn) {
-      Alert.alert('Login Required', 'Please login to delete posts.');
+  const pickImages = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'You need to allow access to your photo library.');
       return;
     }
-    setPostToDelete({ id: postId, title: postTitle });
-    setShowDeleteModal(true);
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.7,
+      allowsMultipleSelection: true,
+    });
+
+    if (!result.canceled && result.assets) {
+      const newImages = result.assets.map(asset => asset.uri);
+      setImageUris(prev => [...prev, ...newImages].slice(0, 5)); // Max 5 images
+    }
   };
 
-  // Actually delete the post
-  const confirmDelete = async () => {
-    if (!postToDelete) return;
+  const removeImage = (index: number) => {
+    setImageUris(prev => prev.filter((_, i) => i !== index));
+  };
 
+  const clearPostFieldError = (fieldName: string) => {
+    setPostValidationErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[fieldName];
+      return newErrors;
+    });
+  };
+
+  const handleCreatePost = async () => {
+    // Validate using Yup schema
     try {
-      const token = await AsyncStorage.getItem('token');
-      if (!token) {
-        setShowDeleteModal(false);
-        Alert.alert('Error', 'You must be logged in to delete posts.');
-        return;
+      await postValidationSchema.validate(
+        {
+          title: newPostTitle.trim(),
+          content: newPostContent.trim(),
+          category: newPostCategory,
+        },
+        { abortEarly: false }
+      );
+      
+      // Clear validation errors if validation passes
+      setPostValidationErrors({});
+    } catch (validationError) {
+      if (validationError instanceof Yup.ValidationError) {
+        const errors: { [key: string]: string } = {};
+        validationError.inner.forEach((err: any) => {
+          if (err.path) {
+            errors[err.path] = err.message;
+          }
+        });
+        setPostValidationErrors(errors);
+        return; // Stop submission if validation fails
+      }
+    }
+
+    const token = await AsyncStorage.getItem('token');
+    if (!token) {
+      Alert.alert('Authentication Required', 'You must be logged in to create a post.');
+      return;
+    }
+
+    setPosting(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('title', newPostTitle.trim());
+      formData.append('content', newPostContent.trim());
+      formData.append('category', newPostCategory);
+      
+      // Append multiple images
+      for (const imageUri of imageUris) {
+        const imageResponse = await fetch(imageUri);
+        const imageBlob = await imageResponse.blob();
+        formData.append('images', imageBlob, `post-${Date.now()}.jpg`);
       }
 
-      const res = await fetch(`${FORUM_URL}/${postToDelete.id}`, {
-        method: 'DELETE',
+      const res = await fetch(FORUM_URL, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
+        body: formData,
       });
 
       if (!res.ok) {
-        const errorText = await res.text();
-        let errorMessage = 'Failed to delete post';
-        try {
-          const error = JSON.parse(errorText);
-          errorMessage = error.message || error.error || errorMessage;
-        } catch (e) {
-          errorMessage = errorText || errorMessage;
-        }
-        throw new Error(errorMessage);
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || `Server error: ${res.status}`);
       }
 
-      setPosts((prev) => prev.filter((p) => p.id !== postToDelete.id));
-      setShowDeleteModal(false);
-      setPostToDelete(null);
-      Alert.alert('Success', 'Post deleted successfully');
+      setNewPostTitle('');
+      setNewPostContent('');
+      setNewPostCategory('general');
+      setImageUris([]);
+      setPostValidationErrors({});
+      setShowCreatePost(false);
+      
+      await fetchPosts();
+      
+      Alert.alert(
+        '✅ Success!', 
+        'Your post has been published to the community.',
+        [{ text: 'OK' }]
+      );
+      
     } catch (err) {
-      console.error('Delete failed:', err);
-      setShowDeleteModal(false);
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete post');
+      console.error('Post creation error:', err);
+      
+      if (err instanceof TypeError) {
+        Alert.alert(
+          'Connection Error', 
+          'Could not connect to the server. Please check your network connection.'
+        );
+      } else {
+        Alert.alert(
+          'Error', 
+          err instanceof Error ? err.message : 'Failed to create post. Please try again.'
+        );
+      }
+    } finally {
+      setPosting(false);
     }
   };
 
-  const cancelDelete = () => {
-    setShowDeleteModal(false);
-    setPostToDelete(null);
+  const handleArchivePost = async (postId: string, postTitle: string) => {
+    if (!isLoggedIn) {
+      Alert.alert('Login Required', 'Please login to archive posts.');
+      return;
+    }
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(`${FORUM_URL}/${postId}/archive`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) throw new Error('Failed to archive post');
+
+      await fetchPosts();
+      Alert.alert('Success', 'Post archived successfully');
+    } catch (err) {
+      console.error('Archive failed:', err);
+      Alert.alert('Error', 'Failed to archive post');
+    }
+  };
+
+  const handleUnarchivePost = async (postId: string) => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(`${FORUM_URL}/${postId}/unarchive`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) throw new Error('Failed to unarchive post');
+
+      await fetchPosts();
+      Alert.alert('Success', 'Post unarchived successfully');
+    } catch (err) {
+      console.error('Unarchive failed:', err);
+      Alert.alert('Error', 'Failed to unarchive post');
+    }
   };
 
   const handleLike = async (postId: string) => {
@@ -288,7 +510,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const handleCreatePost = () => {
+  const toggleCreatePost = () => {
     if (!isLoggedIn) {
       Alert.alert(
         'Login Required', 
@@ -303,36 +525,213 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
       );
       return;
     }
-    navigation.navigate('CreatePost');
+    setShowCreatePost(!showCreatePost);
   };
 
-  const filteredPosts = posts.filter((post) => {
-    const matchesCategory = selectedCategory === 'all' || post.category === selectedCategory;
-    const matchesSearch =
-      post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.content.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  const getFilteredPosts = () => {
+    let postsToFilter: ForumPost[] = [];
+    
+    if (activeTab === 'all') {
+      postsToFilter = posts;
+    } else if (activeTab === 'my') {
+      postsToFilter = posts.filter(post => post.user_id === currentUserId);
+    } else if (activeTab === 'archived') {
+      postsToFilter = archivedPosts;
+    }
+    
+    return postsToFilter.filter((post) => {
+      const matchesCategory = selectedCategory === 'all' || post.category === selectedCategory;
+      const matchesSearch =
+        post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        post.content.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCategory && matchesSearch;
+    });
+  };
+
+  const filteredPosts = getFilteredPosts();
 
   const handleChatbotPress = () => {
     navigation.getParent()?.navigate('Chatbot' as never);
   };
 
-  const isOwnPost = (post: ForumPost): boolean => {
-    return isLoggedIn && currentUserId !== null && post.user_id === currentUserId;
+  const renderPost = (post: ForumPost, showActions: boolean = false) => {
+    const edited = wasEdited(post.created_at, post.updated_at);
+    const images = post.imageUrls || [];
+    
+    return (
+      <View key={post.id} style={styles.postCard}>
+        <View style={styles.postHeader}>
+          <View style={styles.userAvatar}>
+            {post.author_image ? (
+              <Image source={{ uri: post.author_image }} style={styles.userAvatarImage} />
+            ) : (
+              <Ionicons name="person" size={22} color="#5d873e" />
+            )}
+          </View>
+          <View style={styles.userInfo}>
+            <Text style={styles.username}>{post.username}</Text>
+            <View style={styles.timeContainer}>
+              <Text style={styles.timeAgo}>
+                {timeAgo(edited && post.updated_at ? post.updated_at : post.created_at)}
+              </Text>
+              {edited && (
+                <Text style={styles.editedBadge}>• edited</Text>
+              )}
+            </View>
+          </View>
+
+          {showActions && (
+            <View style={styles.postActionsIcons}>
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={() =>
+                  navigation.navigate('EditPost', {
+                    postId: post.id,
+                    title: post.title,
+                    content: post.content,
+                    category: post.category,
+                    imageUrls: images,
+                  })
+                }
+              >
+                <Ionicons name="create-outline" size={18} color="#5d873e" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={() => handleArchivePost(post.id, post.title)}
+              >
+                <Ionicons name="archive-outline" size={18} color="#ff9800" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        <TouchableOpacity
+          onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
+        >
+          <View style={styles.postContent}>
+            <Text style={styles.postTitle}>{post.title}</Text>
+            
+            {/* Multiple Images Display */}
+            {images.length > 0 && (
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                style={styles.imagesContainer}
+              >
+                {images.map((imgUrl, idx) => (
+                  <Image 
+                    key={idx} 
+                    source={{ uri: imgUrl }} 
+                    style={[
+                      styles.postCardImage,
+                      images.length > 1 && styles.postCardImageMultiple
+                    ]} 
+                  />
+                ))}
+              </ScrollView>
+            )}
+            
+            <Text style={styles.postText} numberOfLines={3}>
+              {post.content}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.postFooter}>
+          <TouchableOpacity 
+            style={styles.actionItem} 
+            onPress={() => handleLike(post.id)}
+            disabled={!isLoggedIn}
+          >
+            <Ionicons
+              name={likedSet.has(post.id) ? 'thumbs-up' : 'thumbs-up-outline'}
+              size={18}
+              color={likedSet.has(post.id) ? '#e74c3c' : '#5d873e'}
+              style={!isLoggedIn && styles.disabledIcon}
+            />
+            <Text style={[styles.actionText, !isLoggedIn && styles.disabledText]}>
+              {likeCounts[post.id] ?? post.likes}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionItem}
+            onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
+          >
+            <Ionicons name="chatbubble-outline" size={18} color="#5d873e" />
+            <Text style={styles.actionText}>{post.comments_count}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Community Forum</Text>
-          <Text style={styles.headerSubtitle}>Connect with fellow avocado farmers</Text>
-        </View>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Community Forum</Text>
+      </View>
 
-        <View style={styles.searchContainer}>
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'all' && styles.tabActive]}
+          onPress={() => setActiveTab('all')}
+        >
+          <Ionicons 
+            name="globe-outline" 
+            size={20} 
+            color={activeTab === 'all' ? '#5d873e' : '#999'} 
+          />
+          <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
+            All Posts
+          </Text>
+        </TouchableOpacity>
+
+        {isLoggedIn && (
+          <>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'my' && styles.tabActive]}
+              onPress={() => setActiveTab('my')}
+            >
+              <Ionicons 
+                name="person-outline" 
+                size={20} 
+                color={activeTab === 'my' ? '#5d873e' : '#999'} 
+              />
+              <Text style={[styles.tabText, activeTab === 'my' && styles.tabTextActive]}>
+                My Posts
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'archived' && styles.tabActive]}
+              onPress={() => setActiveTab('archived')}
+            >
+              <Ionicons 
+                name="archive-outline" 
+                size={20} 
+                color={activeTab === 'archived' ? '#ff9800' : '#999'} 
+              />
+              <Text style={[
+                styles.tabText, 
+                activeTab === 'archived' && styles.tabTextActive,
+                activeTab === 'archived' && styles.tabTextArchived
+              ]}>
+                Archived
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      <ScrollView 
+        style={styles.mainContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.centerColumn}>
           <View style={styles.searchBar}>
-            <Ionicons name="search-outline" size={20} color="#5d873e" style={styles.searchIcon} />
+            <Ionicons name="search-outline" size={18} color="#5d873e" style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
               placeholder="Search posts..."
@@ -341,10 +740,8 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
               onChangeText={setSearchQuery}
             />
           </View>
-        </View>
 
-        <View style={styles.categoriesContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesContent}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesRow}>
             {categories.map((cat) => (
               <TouchableOpacity
                 key={cat.key}
@@ -356,7 +753,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
               >
                 <Ionicons
                   name={cat.icon as any}
-                  size={18}
+                  size={14}
                   color={selectedCategory === cat.key ? '#fff' : '#5d873e'}
                 />
                 <Text
@@ -370,137 +767,201 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </View>
 
-        <View style={styles.createPostContainer}>
-          <TouchableOpacity
-            style={styles.createPostButton}
-            onPress={handleCreatePost}
-          >
-            <Ionicons name="add-circle" size={20} color="#fff" />
-            <Text style={styles.createPostText}>
-              {isLoggedIn ? 'Create New Post' : 'Login to Create Post'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+          {(activeTab === 'all' || activeTab === 'my') && (
+            <TouchableOpacity
+              style={styles.createPostToggle}
+              onPress={toggleCreatePost}
+            >
+              <View style={styles.createPostToggleContent}>
+                <Ionicons name="add-circle" size={20} color="#5d873e" />
+                <Text style={styles.createPostPlaceholder}>
+                  {showCreatePost ? 'Cancel' : 'Create New Post'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
 
-        {loading ? (
-          <ActivityIndicator size="large" color="#5d873e" style={{ marginTop: 40 }} />
-        ) : (
-          <View style={styles.postsContainer}>
-            {filteredPosts.length === 0 ? (
-              <Text style={styles.emptyText}>No posts found.</Text>
-            ) : (
-              filteredPosts.map((post) => {
-                const edited = wasEdited(post.created_at, post.updated_at);
-                
-                return (
-                  <View key={post.id} style={styles.postCard}>
-                    <View style={styles.postHeader}>
-                      <View style={styles.userAvatar}>
-                        <Ionicons name="person" size={24} color="#5d873e" />
-                      </View>
-                      <View style={styles.userInfo}>
-                        <Text style={styles.username}>{post.username}</Text>
-                        <View style={styles.timeContainer}>
-                          <Text style={styles.timeAgo}>
-                            {timeAgo(edited && post.updated_at ? post.updated_at : post.created_at)}
-                          </Text>
-                          {edited && (
-                            <Text style={styles.editedBadge}>• edited</Text>
-                          )}
-                        </View>
-                      </View>
+          {showCreatePost && (activeTab === 'all' || activeTab === 'my') && (
+            <View style={styles.createPostForm}>
+              <View style={styles.createPostHeader}>
+                <Text style={styles.createPostHeaderText}>New Post</Text>
+                <TouchableOpacity onPress={() => setShowCreatePost(false)}>
+                  <Ionicons name="close" size={22} color="#666" />
+                </TouchableOpacity>
+              </View>
 
-                      {/* Only show edit/delete buttons if user is logged in AND owns the post */}
-                      {isOwnPost(post) && (
-                        <View style={styles.postActions}>
-                          <TouchableOpacity
-                            style={styles.iconButton}
-                            onPress={() =>
-                              navigation.navigate('EditPost', {
-                                postId: post.id,
-                                title: post.title,
-                                content: post.content,
-                                category: post.category,
-                                imageUrl: post.imageUrl,
-                              })
-                            }
-                          >
-                            <Ionicons name="create-outline" size={20} color="#5d873e" />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.iconButton}
-                            onPress={() => handleDeletePost(post.id, post.title)}
-                          >
-                            <Ionicons name="trash-outline" size={20} color="#e74c3c" />
-                          </TouchableOpacity>
-                        </View>
+              <TextInput
+                style={styles.postTitleInput}
+                placeholder="Post title..."
+                placeholderTextColor="#999"
+                value={newPostTitle}
+                onChangeText={(text) => {
+                  setNewPostTitle(text);
+                  clearPostFieldError('title');
+                }}
+                maxLength={120}
+                editable={!posting}
+              />
+              {postValidationErrors.title && (
+                <Text style={styles.postErrorText}>{postValidationErrors.title}</Text>
+              )}
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.postCategoryRow}
+              >
+                {CATEGORIES.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.key}
+                    style={[
+                      styles.postCategoryChip,
+                      newPostCategory === cat.key && styles.postCategoryChipActive,
+                    ]}
+                    onPress={() => !posting && setNewPostCategory(cat.key)}
+                    disabled={posting}
+                  >
+                    <Ionicons
+                      name={cat.icon as any}
+                      size={12}
+                      color={newPostCategory === cat.key ? '#fff' : '#5d873e'}
+                    />
+                    <Text
+                      style={[
+                        styles.postCategoryChipText,
+                        newPostCategory === cat.key && styles.postCategoryChipTextActive,
+                      ]}
+                    >
+                      {cat.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {postValidationErrors.category && (
+                <Text style={styles.postErrorText}>{postValidationErrors.category}</Text>
+              )}
+
+              <TextInput
+                style={styles.postContentInput}
+                placeholder="Share your thoughts..."
+                placeholderTextColor="#999"
+                value={newPostContent}
+                onChangeText={(text) => {
+                  setNewPostContent(text);
+                  clearPostFieldError('content');
+                }}
+                multiline
+                textAlignVertical="top"
+                editable={!posting}
+              />
+              {postValidationErrors.content && (
+                <Text style={styles.postErrorText}>{postValidationErrors.content}</Text>
+              )}
+
+              {/* Multiple Images Preview */}
+              {imageUris.length > 0 && (
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.imagePreviewsContainer}
+                >
+                  {imageUris.map((uri, index) => (
+                    <View key={index} style={styles.imagePreviewWrapper}>
+                      <Image source={{ uri }} style={styles.imagePreviewSmall} />
+                      <TouchableOpacity
+                        style={styles.imageRemoveButton}
+                        onPress={() => removeImage(index)}
+                      >
+                        <Ionicons name="close-circle" size={22} color="#e74c3c" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
+              <View style={styles.postActions}>
+                <TouchableOpacity
+                  style={styles.addPhotoButton}
+                  onPress={pickImages}
+                  disabled={posting || imageUris.length >= 5}
+                >
+                  <Ionicons name="image-outline" size={18} color="#5d873e" />
+                  <Text style={styles.addPhotoText}>
+                    {imageUris.length}/5
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.postSubmitButton, posting && styles.postSubmitButtonDisabled]}
+                  onPress={handleCreatePost}
+                  disabled={posting}
+                >
+                  {posting ? (
+                    <>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={[styles.postSubmitText, { marginLeft: 8 }]}>Posting...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="send" size={16} color="#fff" />
+                      <Text style={styles.postSubmitText}>Post</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {loading ? (
+            <ActivityIndicator size="large" color="#5d873e" style={{ marginTop: 40 }} />
+          ) : (
+            <View style={styles.postsContainer}>
+              {!isLoggedIn && (activeTab === 'my' || activeTab === 'archived') ? (
+                <View style={styles.loginPrompt}>
+                  <Ionicons name="information-circle-outline" size={28} color="#5d873e" />
+                  <Text style={styles.loginPromptText}>
+                    Login to view your posts
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.loginPromptButton}
+                    onPress={() => navigation.getParent()?.navigate('AuthScreen' as never)}
+                  >
+                    <Text style={styles.loginPromptButtonText}>Login Now</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : filteredPosts.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  {activeTab === 'archived' 
+                    ? 'No archived posts.' 
+                    : activeTab === 'my'
+                    ? "You haven't created any posts yet."
+                    : 'No posts found.'}
+                </Text>
+              ) : (
+                filteredPosts.map((post) => {
+                  const showActions = activeTab === 'my';
+                  const showUnarchive = activeTab === 'archived';
+                  
+                  return (
+                    <View key={post.id}>
+                      {renderPost(post, showActions)}
+                      {showUnarchive && (
+                        <TouchableOpacity
+                          style={styles.unarchiveButton}
+                          onPress={() => handleUnarchivePost(post.id)}
+                        >
+                          <Ionicons name="arrow-undo" size={16} color="#fff" />
+                          <Text style={styles.unarchiveButtonText}>Unarchive</Text>
+                        </TouchableOpacity>
                       )}
                     </View>
-
-                    <TouchableOpacity
-                      onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
-                    >
-                      <View style={styles.postContent}>
-                        <Text style={styles.postTitle}>{post.title}</Text>
-                        {post.imageUrl && (
-                          <Image source={{ uri: post.imageUrl }} style={styles.postCardImage} />
-                        )}
-                        <Text style={styles.postText} numberOfLines={2}>
-                          {post.content}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-
-                    <View style={styles.postFooter}>
-                      <TouchableOpacity 
-                        style={styles.actionItem} 
-                        onPress={() => handleLike(post.id)}
-                        disabled={!isLoggedIn}
-                      >
-                        <Ionicons
-                          name={likedSet.has(post.id) ? 'thumbs-up' : 'thumbs-up-outline'}
-                          size={20}
-                          color={likedSet.has(post.id) ? '#e74c3c' : '#5d873e'}
-                          style={!isLoggedIn && styles.disabledIcon}
-                        />
-                        <Text style={[styles.actionText, !isLoggedIn && styles.disabledText]}>
-                          {likeCounts[post.id] ?? post.likes}
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.actionItem}
-                        onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
-                      >
-                        <Ionicons name="chatbubble-outline" size={20} color="#5d873e" />
-                        <Text style={styles.actionText}>{post.comments_count}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {!isLoggedIn && (
-          <View style={styles.loginPrompt}>
-            <Ionicons name="information-circle-outline" size={32} color="#5d873e" />
-            <Text style={styles.loginPromptText}>
-              Login to like posts, comment, and create your own posts
-            </Text>
-            <TouchableOpacity
-              style={styles.loginPromptButton}
-              onPress={() => navigation.getParent()?.navigate('AuthScreen' as never)}
-            >
-              <Text style={styles.loginPromptButtonText}>Login Now</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={styles.bottomSpacer} />
+                  );
+                })
+              )}
+            </View>
+          )}
+        </View>
       </ScrollView>
 
       <TouchableOpacity style={styles.chatbotButton} onPress={handleChatbotPress}>
@@ -509,301 +970,8 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
           <Ionicons name="sparkles" size={12} color="#5d873e" />
         </View>
       </TouchableOpacity>
-
-      {/* CUSTOM DELETE CONFIRMATION MODAL - ALWAYS ON TOP */}
-      <Modal
-        visible={showDeleteModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={cancelDelete}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Ionicons name="warning" size={48} color="#e74c3c" />
-              <Text style={styles.modalTitle}>Delete Post</Text>
-            </View>
-            
-            <Text style={styles.modalMessage}>
-              Are you sure you want to delete "{postToDelete?.title}"?
-            </Text>
-            <Text style={styles.modalWarning}>
-              This action cannot be undone.
-            </Text>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={cancelDelete}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalButton, styles.deleteButton]}
-                onPress={confirmDelete}
-              >
-                <Text style={styles.deleteButtonText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: {
-    backgroundColor: '#5d873e',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 24,
-  },
-  headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
-  headerSubtitle: { fontSize: 14, color: '#d4e5cc' },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: '#fff',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 25,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 2,
-    borderColor: '#e8e8e8',
-  },
-  searchIcon: { marginRight: 8 },
-  searchInput: { flex: 1, fontSize: 15, color: '#333' },
-  categoriesContainer: { marginTop: 8, backgroundColor: '#fff' },
-  categoriesContent: { paddingHorizontal: 16, paddingVertical: 12 },
-  categoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#f5f5f5',
-    marginRight: 10,
-    borderWidth: 2,
-    borderColor: '#5d873e',
-  },
-  categoryButtonActive: { backgroundColor: '#5d873e', borderColor: '#5d873e' },
-  categoryText: { fontSize: 14, fontWeight: '600', color: '#5d873e', marginLeft: 6 },
-  categoryTextActive: { color: '#fff' },
-  createPostContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e8e8e8',
-  },
-  createPostButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#5d873e',
-    paddingVertical: 14,
-    borderRadius: 25,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-  },
-  createPostText: { color: '#fff', fontSize: 16, fontWeight: '600', marginLeft: 8 },
-  postsContainer: { paddingHorizontal: 16, paddingTop: 16 },
-  postCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: '#5d873e',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  postHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  userAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#e8f5e9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#5d873e',
-  },
-  userInfo: { marginLeft: 12, flex: 1 },
-  username: { fontSize: 15, fontWeight: '600', color: '#5d873e', marginBottom: 2 },
-  timeContainer: { flexDirection: 'row', alignItems: 'center' },
-  timeAgo: { fontSize: 13, color: '#666' },
-  editedBadge: { fontSize: 12, color: '#999', marginLeft: 4, fontStyle: 'italic' },
-  postActions: { flexDirection: 'row', gap: 8 },
-  iconButton: { padding: 4 },
-  postContent: { marginBottom: 12 },
-  postTitle: { fontSize: 17, fontWeight: 'bold', color: '#2d3e2d', marginBottom: 8 },
-  postCardImage: {
-    width: '100%',
-    height: 160,
-    borderRadius: 10,
-    objectFit: 'cover',
-    marginBottom: 8,
-  },
-  postText: { fontSize: 14, color: '#555', lineHeight: 20, marginBottom: 12 },
-  postFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e8e8e8',
-  },
-  actionItem: { flexDirection: 'row', alignItems: 'center', marginRight: 20 },
-  actionText: { fontSize: 14, color: '#5d873e', fontWeight: '600', marginLeft: 6 },
-  disabledIcon: { opacity: 0.5 },
-  disabledText: { opacity: 0.5 },
-  emptyText: { textAlign: 'center', color: '#999', marginTop: 40, fontSize: 15 },
-  loginPrompt: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 24,
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#5d873e',
-  },
-  loginPromptText: {
-    fontSize: 15,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 12,
-    marginBottom: 16,
-    lineHeight: 22,
-  },
-  loginPromptButton: {
-    backgroundColor: '#5d873e',
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 25,
-  },
-  loginPromptButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  bottomSpacer: { height: 100 },
-  chatbotButton: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#5d873e',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  chatbotBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#5d873e',
-  },
-  // MODAL STYLES
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  modalHeader: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2d3e2d',
-    marginTop: 12,
-  },
-  modalMessage: {
-    fontSize: 16,
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 8,
-    lineHeight: 22,
-  },
-  modalWarning: {
-    fontSize: 14,
-    color: '#e74c3c',
-    textAlign: 'center',
-    marginBottom: 24,
-    fontWeight: '600',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#f5f5f5',
-    borderWidth: 2,
-    borderColor: '#5d873e',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#5d873e',
-  },
-  deleteButton: {
-    backgroundColor: '#e74c3c',
-  },
-  deleteButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-});
 
 export default CommunityScreen;
