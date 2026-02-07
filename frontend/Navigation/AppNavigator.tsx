@@ -4,6 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { View, StyleSheet, Platform, Modal, ScrollView, Animated, TouchableOpacity, Text, Dimensions } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const getScreenWidth = () => Dimensions.get('window').width;
 
@@ -16,7 +17,8 @@ import AuthScreen from '../Screens/Auth/AuthScreen';
 import ProfileScreen from '../Screens/Auth/ProfileScreen';
 import ChatbotScreen from '../Screens/Forum/ChatbotScreen';
 import PostDetailScreen from '../Screens/Forum/PostDetailScreen';
-import EditPostScreen from '../Screens/Forum/EditPostScreen'; 
+import EditPostScreen from '../Screens/Forum/EditPostScreen';
+import AdminNavigator from './AdminNavigator'; 
 
 // Type definitions
 export type TabParamList = {
@@ -39,6 +41,7 @@ export type RootStackParamList = {
   AuthScreen: undefined;
   Chatbot: undefined;
   About: undefined;
+  Admin: undefined;
 };
 
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -115,7 +118,7 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Menu</Text>
               <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <Ionicons name="close" size={28} color="#5d873e" />
+                <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
             
@@ -125,10 +128,11 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
                   key={index}
                   style={styles.modalMenuItem}
                   onPress={() => handleNavigate(item.route)}
+                  activeOpacity={0.7}
                 >
-                  <Ionicons name={item.icon as any} size={24} color="#5d873e" />
+                  <Ionicons name={item.icon as any} size={22} color="#5d873e" />
                   <Text style={styles.modalMenuText}>{item.name}</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#999" />
+                  <Ionicons name="chevron-forward" size={18} color="#999" />
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -293,9 +297,37 @@ function MainTabNavigator() {
 
 // Root Stack Navigator
 export default function AppNavigator() {
+  const [initialRoute, setInitialRoute] = useState<'MainTabs' | 'Admin'>('MainTabs');
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    checkUserRole();
+  }, []);
+
+  const checkUserRole = async () => {
+    try {
+      const userStr = await AsyncStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        if (user.role === 'admin') {
+          setInitialRoute('Admin');
+        }
+      }
+    } catch (error) {
+      console.error('Error checking user role:', error);
+    } finally {
+      setIsReady(true);
+    }
+  };
+
+  if (!isReady) {
+    return null; // Or a loading screen
+  }
+
   return (
     <NavigationContainer>
       <Stack.Navigator
+        initialRouteName={initialRoute}
         screenOptions={{
           headerShown: false,
         }}
@@ -311,6 +343,14 @@ export default function AppNavigator() {
         <Stack.Screen 
           name="Chatbot" 
           component={ChatbotScreen}
+          options={{
+            presentation: 'card', 
+            headerShown: false, 
+          }}
+        />
+        <Stack.Screen 
+          name="Admin" 
+          component={AdminNavigator}
           options={{
             presentation: 'card', 
             headerShown: false, 
@@ -350,8 +390,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#fff',
-    width: '75%',
-    maxWidth: 300,
+    width: '70%',
+    maxWidth: 280,
     height: '100%',
     elevation: 10,
     shadowColor: '#000',
@@ -363,35 +403,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 30,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingTop: Platform.OS === 'ios' ? 50 : 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    backgroundColor: '#f8f8f8',
+    borderBottomColor: '#e8f5e0',
+    backgroundColor: '#5d873e',
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#2d5a3d',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.5,
   },
   closeButton: {
     padding: 4,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalBody: {
     flex: 1,
+    paddingTop: 8,
   },
   modalMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    gap: 16,
+    borderBottomColor: '#f5f5f5',
+    gap: 12,
   },
   modalMenuText: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 15,
     color: '#2d5a3d',
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });

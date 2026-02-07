@@ -18,10 +18,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Footer from '../Components/Footer';
 import { styles } from '../Styles/HomeScreen.styles';
+import { BASE_URL } from '../config/api';
 
 type RootStackParamList = {
   Home: undefined;
   Community: undefined;
+  CommunityStack: undefined;
   Scan: undefined;
   Market: undefined;
   Profile: undefined;
@@ -57,9 +59,23 @@ interface ActionButton {
   gradient: [string, string];
 }
 
+interface ForumPost {
+  id: string;
+  title: string;
+  content: string;
+  username: string;
+  category: string;
+  likes: number;
+  comments_count: number;
+  created_at: string;
+  archived?: boolean;
+  imageUrls?: string[];
+}
+
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const [activeSlide, setActiveSlide] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [recentPosts, setRecentPosts] = useState<ForumPost[]>([]);
   
   // ============================================
   // RESPONSIVE STATE - Updates on window resize
@@ -126,7 +142,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       icon: 'people',
       title: 'COMMUNITY FORUM',
       subtitle: 'Join the discussion',
-      screen: 'Community',
+      screen: 'CommunityStack',
       gradient: ['#5d873e', '#4a5f37'],
     },
   ];
@@ -157,6 +173,54 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       url: 'https://www.abs-cbn.com',
     },
   ];
+
+  const avocadoBenefits = [
+    {
+      icon: 'heart',
+      title: 'Heart Health',
+      description: 'Rich in monounsaturated fats that support cardiovascular health',
+      color: '#e74c3c',
+    },
+    {
+      icon: 'fitness',
+      title: 'Nutrient Dense',
+      description: 'Packed with 20+ vitamins and minerals including potassium and folate',
+      color: '#5d873e',
+    },
+    {
+      icon: 'eye',
+      title: 'Eye Protection',
+      description: 'Contains lutein and zeaxanthin for maintaining healthy vision',
+      color: '#3498db',
+    },
+    {
+      icon: 'shield-checkmark',
+      title: 'Antioxidant Power',
+      description: 'High in antioxidants that help protect cells from damage',
+      color: '#9b59b6',
+    },
+  ];
+
+  // Fetch recent forum posts
+  useEffect(() => {
+    const fetchRecentPosts = async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/api/forum`);
+        if (response.ok) {
+          const data: ForumPost[] = await response.json();
+          // Get 5 most recent posts (not archived)
+          const recent = data
+            .filter(post => !post.archived)
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 5);
+          setRecentPosts(recent);
+        }
+      } catch (error) {
+        console.error('Failed to fetch recent posts:', error);
+      }
+    };
+    fetchRecentPosts();
+  }, []);
 
   // Auto-slide carousel
   useEffect(() => {
@@ -351,6 +415,27 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                   </TouchableOpacity>
                 ))}
               </View>
+
+              {/* Avocado Benefits Section */}
+              <View style={[styles.benefitsSection, { marginTop: 24, padding: isTablet ? 20 : 16 }]}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.avocadoIcon}>🥑</Text>
+                  <Text style={[styles.sectionTitle, { fontSize: isTablet ? 20 : 18 }]}>
+                    Avocado Benefits
+                  </Text>
+                </View>
+                <View style={styles.benefitsGrid}>
+                  {avocadoBenefits.map((benefit, index) => (
+                    <View key={index} style={styles.benefitCard}>
+                      <View style={[styles.benefitIcon, { backgroundColor: benefit.color + '20' }]}>
+                        <Ionicons name={benefit.icon as any} size={24} color={benefit.color} />
+                      </View>
+                      <Text style={styles.benefitTitle}>{benefit.title}</Text>
+                      <Text style={styles.benefitDescription}>{benefit.description}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
             </View>
 
             {/* Right Column - News & Community */}
@@ -391,17 +476,68 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                   </Text>
                 </View>
                 <View style={styles.communityPreview}>
-                  <Text style={styles.communityText}>
-                    Join our growing community of avocado farmers and enthusiasts. Share knowledge, ask questions, and learn from experienced growers.
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.communityButton}
-                    onPress={() => handleAction('Community')}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.communityButtonText}>Visit Forum</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#fff" />
-                  </TouchableOpacity>
+                  {recentPosts.length > 0 ? (
+                    recentPosts.map((post) => (
+                      <TouchableOpacity
+                        key={post.id}
+                        style={styles.forumPostCard}
+                        onPress={() => (navigation as any).navigate('CommunityStack', {
+                          screen: 'PostDetail',
+                          params: { postId: post.id }
+                        })}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.forumPostHeader}>
+                          <View style={styles.forumPostUserInfo}>
+                            <View style={styles.forumPostAvatar}>
+                              <Ionicons name="person" size={16} color="#5d873e" />
+                            </View>
+                            <Text style={styles.forumPostAuthor}>{post.username}</Text>
+                          </View>
+                          <View style={styles.forumCategoryBadge}>
+                            <Text style={styles.forumCategoryText}>{post.category}</Text>
+                          </View>
+                        </View>
+                        
+                        <Text style={styles.forumPostTitle} numberOfLines={2}>
+                          {post.title}
+                        </Text>
+                        
+                        <Text style={styles.forumPostContent} numberOfLines={3}>
+                          {post.content}
+                        </Text>
+                        
+                        {post.imageUrls && post.imageUrls.length > 0 && (
+                          <View style={styles.forumPostImageContainer}>
+                            <Image
+                              source={{ uri: post.imageUrls[0] }}
+                              style={styles.forumPostImage}
+                              resizeMode="cover"
+                            />
+                            {post.imageUrls.length > 1 && (
+                              <View style={styles.moreImagesOverlay}>
+                                <Text style={styles.moreImagesText}>+{post.imageUrls.length - 1}</Text>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                        
+                        <View style={styles.forumPostFooter}>
+                          <View style={styles.forumPostStats}>
+                            <Ionicons name="heart" size={16} color="#e74c3c" />
+                            <Text style={styles.forumPostStatText}>{post.likes}</Text>
+                            <Ionicons name="chatbubble" size={16} color="#5d873e" style={{ marginLeft: 12 }} />
+                            <Text style={styles.forumPostStatText}>{post.comments_count}</Text>
+                          </View>
+                          <Text style={styles.readMoreText}>Read more →</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))
+                  ) : (
+                    <Text style={styles.communityText}>
+                      Join our growing community of avocado farmers and enthusiasts.
+                    </Text>
+                  )}
                 </View>
               </View>
             </View>

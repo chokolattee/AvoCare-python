@@ -140,7 +140,8 @@ const AuthScreen: React.FC = () => {
         console.log('✅ Stored auth data:', {
           userId: userData.id,
           username: userData.name,
-          email: userData.email
+          email: userData.email,
+          role: userData.role
         });
 
         // Dispatch event to notify Header and other components
@@ -149,12 +150,19 @@ const AuthScreen: React.FC = () => {
         }
         // ============================================
         
-        // Close modal and navigate to home
+        // Close modal
         navigation.goBack();
         
-        // Show success message after a short delay
+        // Navigate based on user role
         setTimeout(() => {
-          Alert.alert('Success', `Welcome back, ${userData.name}!`);
+          if (userData.role === 'admin') {
+            // @ts-ignore - Navigate to Admin
+            navigation.navigate('Admin');
+            Alert.alert('Success', `Welcome back, Admin ${userData.name}!`);
+          } else {
+            // Regular users stay on home screen (modal just closes)
+            Alert.alert('Success', `Welcome back, ${userData.name}!`);
+          }
         }, 300);
       } else {
         setError('Login failed. Please try again.');
