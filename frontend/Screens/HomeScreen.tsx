@@ -64,6 +64,7 @@ interface ForumPost {
   title: string;
   content: string;
   username: string;
+  author_image?: string;
   category: string;
   likes: number;
   comments_count: number;
@@ -150,27 +151,27 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const newsItems: NewsItem[] = [
     {
       id: 1,
-      title: 'Philippine avocado exports hit record high in 2025',
+      title: 'Demand and Supply of Avocado in the Philippines',
       source: 'Philippine News Agency',
-      url: 'https://www.pna.gov.ph',
+      url: 'https://www.philstar.com/business/2026/02/06/2506009/avocados',
     },
     {
       id: 2,
-      title: 'Local brand champions health-conscious living through avocado products',
-      source: 'GMA Network',
-      url: 'https://www.gmanetwork.com',
+        title: 'DA pushes exports of more high-value crops',
+        source: 'Business Inquirer',
+      url: 'https://business.inquirer.net/572253/da-pushes-exports-of-more-high-value-crops',
     },
     {
       id: 3,
-      title: 'Avocado farming gains traction as sustainable livelihood in rural PH',
-      source: 'Business Inquirer',
-      url: 'https://business.inquirer.net',
+      title: 'Avocado Price Philippines 2025 & Farm Trends in Agriculture',
+      source: 'Farmonaut',
+      url: 'https://farmonaut.com/asia/avocado-price-philippines-2025-farm-trends-in-agriculture',
     },
     {
       id: 4,
-      title: 'Avocado to boost PH economy and wellness industry',
-      source: 'ABS-CBN Lifestyle',
-      url: 'https://www.abs-cbn.com',
+      title: "Tropical fruits drive Philippines' export gains",
+      source: 'Daily Tribune',
+      url: 'https://tribune.net.ph/2026/02/07/tropical-fruits-drive-philippines-export-gains',
     },
   ];
 
@@ -180,24 +181,28 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
       title: 'Heart Health',
       description: 'Rich in monounsaturated fats that support cardiovascular health',
       color: '#e74c3c',
+      url: 'https://www.scripps.org/news_items/7924-are-avocados-good-for-your-heart-health',
     },
     {
       icon: 'fitness',
       title: 'Nutrient Dense',
       description: 'Packed with 20+ vitamins and minerals including potassium and folate',
       color: '#5d873e',
+      url: 'https://www.health.harvard.edu/nutrition/avocado-nutrition-health-benefits-and-easy-recipes',
     },
     {
       icon: 'eye',
       title: 'Eye Protection',
       description: 'Contains lutein and zeaxanthin for maintaining healthy vision',
       color: '#3498db',
+      url: 'https://sunrisehealthfoods.com/tips/avocado-for-eye-and-mind/',
     },
     {
       icon: 'shield-checkmark',
       title: 'Antioxidant Power',
       description: 'High in antioxidants that help protect cells from damage',
       color: '#9b59b6',
+      url: 'https://www.manipalcigna.com/health-benefits/health-benefits-of-avocado',
     },
   ];
 
@@ -242,8 +247,8 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
     return () => clearInterval(interval);
   }, [carouselImages.length]);
 
-  const openNewsArticle = (url: string) => {
-    Linking.openURL(url).catch((err) => console.error('Failed to open article:', err));
+  const openURL = (url: string) => {
+    Linking.openURL(url).catch((err) => console.error('Failed to open URL:', err));
   };
 
   const handleAction = (screen: keyof RootStackParamList) => {
@@ -426,13 +431,19 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
                 <View style={styles.benefitsGrid}>
                   {avocadoBenefits.map((benefit, index) => (
-                    <View key={index} style={styles.benefitCard}>
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.benefitCard}
+                      onPress={() => openURL(benefit.url)}
+                      activeOpacity={0.7}
+                    >
                       <View style={[styles.benefitIcon, { backgroundColor: benefit.color + '20' }]}>
                         <Ionicons name={benefit.icon as any} size={24} color={benefit.color} />
                       </View>
                       <Text style={styles.benefitTitle}>{benefit.title}</Text>
                       <Text style={styles.benefitDescription}>{benefit.description}</Text>
-                    </View>
+                      <Text style={styles.readMoreText}>Read more →</Text>
+                    </TouchableOpacity>
                   ))}
                 </View>
               </View>
@@ -453,7 +464,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                     <TouchableOpacity
                       key={item.id}
                       style={styles.newsItem}
-                      onPress={() => openNewsArticle(item.url)}
+                      onPress={() => openURL(item.url)}
                       activeOpacity={0.7}
                     >
                       <View style={styles.newsItemContent}>
@@ -490,7 +501,11 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                         <View style={styles.forumPostHeader}>
                           <View style={styles.forumPostUserInfo}>
                             <View style={styles.forumPostAvatar}>
-                              <Ionicons name="person" size={16} color="#5d873e" />
+                              {post.author_image ? (
+                                <Image source={{ uri: post.author_image }} style={styles.userAvatarImage} />
+                              ) : (
+                                <Ionicons name="person" size={16} color="#5d873e" />
+                              )}
                             </View>
                             <Text style={styles.forumPostAuthor}>{post.username}</Text>
                           </View>

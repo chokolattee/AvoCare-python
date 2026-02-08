@@ -18,6 +18,7 @@ import ProfileScreen from '../Screens/Auth/ProfileScreen';
 import ChatbotScreen from '../Screens/Forum/ChatbotScreen';
 import PostDetailScreen from '../Screens/Forum/PostDetailScreen';
 import EditPostScreen from '../Screens/Forum/EditPostScreen';
+import AboutScreen from '../Screens/AboutScreen';
 import AdminNavigator from './AdminNavigator'; 
 
 // Type definitions
@@ -86,7 +87,13 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
   }, [visible, screenWidth]);
 
   const handleNavigate = (route: string) => {
-    navigation.navigate(route);
+    // Tab screens should always redirect to MainTabs with the correct screen
+    const tabScreens = ['Home', 'CommunityStack', 'Scan', 'Market', 'Profile'];
+    if (tabScreens.includes(route)) {
+      navigation.navigate('MainTabs', { screen: route });
+    } else {
+      navigation.navigate(route);
+    }
     onClose();
   };
 
@@ -347,6 +354,15 @@ export default function AppNavigator() {
             presentation: 'card', 
             headerShown: false, 
           }}
+        />
+        <Stack.Screen 
+          name="About" 
+          component={AboutScreen}
+          options={({ navigation }) => ({
+            presentation: 'card', 
+            headerShown: true,
+            header: () => <CustomHeader navigation={navigation} />,
+          })}
         />
         <Stack.Screen 
           name="Admin" 

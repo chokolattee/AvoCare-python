@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 const getBaseUrl = (): string => {
-  return 'http://192.168.0.124:8081';  // ✅ Port 8081 matches backend config
+  return 'http://192.168.0.125:8081';  // ✅ Port 8081 matches backend config
 };
 
 export const BASE_URL = getBaseUrl();

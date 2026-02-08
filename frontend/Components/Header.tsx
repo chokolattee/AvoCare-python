@@ -124,8 +124,13 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
   };
 
   const navigateTo = (screenName: string) => {
-    console.log('Navigating to:', screenName);
-    navigation.navigate(screenName);
+    // Tab screens should always redirect to MainTabs with the correct screen
+    const tabScreens = ['Home', 'CommunityStack', 'Scan', 'Market', 'Profile'];
+    if (tabScreens.includes(screenName)) {
+      navigation.navigate('MainTabs', { screen: screenName });
+    } else {
+      navigation.navigate(screenName);
+    }
   };
 
   return (

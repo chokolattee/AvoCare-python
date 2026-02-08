@@ -234,6 +234,12 @@ export const styles = StyleSheet.create({
     backgroundColor: '#e8f5e0',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  userAvatarImage: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
   forumPostAuthor: {
     fontSize: 13,
