@@ -11,6 +11,7 @@ export interface RipenessResult {
     confidence: number;
     days_to_ripe?: string;
     recommendation?: string;
+    bbox?: [number, number, number, number]; // [xmin, ymin, xmax, ymax] in normalized coordinates
   };
   all_probabilities?: {
     [key: string]: number;

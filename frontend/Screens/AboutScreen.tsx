@@ -68,35 +68,35 @@ const AboutScreen: React.FC<Props> = ({ navigation }) => {
     {
       name: 'Mary Pauline Calungsod',
       image: calungsodImage,
-      bio: 'Full-stack developer passionate about sustainable agriculture technology',
+      bio: '3rd year Information Technology student',
       email: 'marypauline.calungsod@tup.edu.ph',
       linkedin: 'https://linkedin.com/in/juandelacruz',
     },
     {
       name: 'Xyrvi Mateo',
       image: mateoImage,
-      bio: 'Creating beautiful and intuitive interfaces for farmers',
+      bio: '3rd year Information Technology student',
       email: 'xyrvi.mateo@tup.edu.ph',
       linkedin: 'https://linkedin.com/in/mariasantos',
     },
     {
       name: 'Karl Jexel Talaba',
       image: talabaImage,
-      bio: 'Expert in avocado cultivation with 10+ years of experience',
+      bio: '3rd year Information Technology student',
       email: 'karljexel.talaba@tup.edu.ph',
       linkedin: 'https://linkedin.com/in/pedroreyes',
     },
     {
       name: 'Alvin Symo Yago',
       image: yagoImage,
-      bio: 'Developing AI models for plant disease detection and analytics',
-      email: 'ana@avocare.com',
+      bio: '3rd year Information Technology student',
+      email: 'alvinsymo.yago@tup.edu.ph',
       linkedin: 'https://linkedin.com/in/anagarcia',
     },
     {
       name: 'Pops Madriaga',
-      bio: 'Leading product strategy and bringing innovative solutions to farmers',
-      email: 'carlos@avocare.com',
+      bio: 'IT Professor',
+      email: 'pops.madriaga@tup.edu.ph',
       linkedin: 'https://linkedin.com/in/carlosmendoza',
     },
   ];
@@ -160,16 +160,6 @@ const AboutScreen: React.FC<Props> = ({ navigation }) => {
             alignSelf: 'center',
             width: '100%'
           }]}>
-            <View style={[styles.logoContainer, { 
-              width: isMobile ? 100 : 120, 
-              height: isMobile ? 100 : 120,
-              borderRadius: isMobile ? 50 : 60 
-            }]}>
-              <Image source={avocadoLogo} style={[styles.logo, {
-                width: isMobile ? 65 : 80,
-                height: isMobile ? 65 : 80,
-              }]} />
-            </View>
             <Text style={[styles.heroTitle, { fontSize: isMobile ? 28 : 36 }]}>About AvoCare</Text>
             <Text style={[styles.heroSubtitle, { fontSize: isMobile ? 14 : 16 }]}>
               Empowering Avocado Farmers Through Technology

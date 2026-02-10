@@ -1,11 +1,12 @@
 import React from 'react';
 import { createDrawerNavigator, DrawerNavigationOptions } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
+import { useWindowDimensions } from 'react-native';
 import DashboardScreen from '../Screens/Admin/DashboardScreen';
 import UsersScreen from '../Screens/Admin/UsersScreen';
 import AnalysisScreen from '../Screens/Admin/AnalysisScreen';
 import MarketScreen from '../Screens/MarketScreen';
-import CommunityScreen from '../Screens/Forum/CommunityScreen';
+import ForumScreen from '../Screens/Admin/ForumScreen';
 import Header from '../Components/Header';
 
 export type AdminDrawerParamList = {
@@ -18,12 +19,10 @@ export type AdminDrawerParamList = {
 
 const Drawer = createDrawerNavigator<AdminDrawerParamList>();
 
-// Wrapper component for CommunityScreen to handle navigation props
-const ForumWrapper = ({ navigation }: any) => {
-  return <CommunityScreen navigation={navigation} route={{ key: 'Forum', name: 'Forum' } as any} />;
-};
-
 const AdminNavigator = () => {
+  const dimensions = useWindowDimensions();
+  const isLargeScreen = dimensions.width >= 768;
+
   return (
     <Drawer.Navigator
       initialRouteName="Dashboard"
@@ -33,21 +32,27 @@ const AdminNavigator = () => {
         drawerActiveBackgroundColor: '#f0f4ed',
         drawerStyle: {
           backgroundColor: '#fff',
-          width: 280,
+          width: isLargeScreen ? 240 : 260,
+          borderRightWidth: isLargeScreen ? 1 : 0,
+          borderRightColor: '#e5e7eb',
         },
         drawerLabelStyle: {
-          fontSize: 15,
+          fontSize: 14,
           fontWeight: '600',
-          marginLeft: -16,
+          marginLeft: 4,
         },
         drawerItemStyle: {
           borderRadius: 8,
           marginHorizontal: 8,
-          paddingVertical: 4,
+          marginVertical: 2,
+          paddingVertical: 2,
+          paddingLeft: 8,
         },
+        drawerType: isLargeScreen ? 'permanent' : 'front',
+        swipeEnabled: !isLargeScreen,
         header: () => (
           <Header 
-            onMenuPress={() => navigation.toggleDrawer()} 
+            onMenuPress={!isLargeScreen ? () => navigation.toggleDrawer() : undefined} 
             showNavLinks={false}
           />
         ),
@@ -59,7 +64,7 @@ const AdminNavigator = () => {
         options={{
           drawerLabel: 'Dashboard',
           drawerIcon: ({ color, size }: { color: string; size: number }) => (
-            <Ionicons name="grid" size={size} color={color} />
+            <Ionicons name="grid" size={20} color={color} />
           ),
         }}
       />
@@ -69,7 +74,7 @@ const AdminNavigator = () => {
         options={{
           drawerLabel: 'Users Management',
           drawerIcon: ({ color, size }: { color: string; size: number }) => (
-            <Ionicons name="people" size={size} color={color} />
+            <Ionicons name="people" size={20} color={color} />
           ),
         }}
       />
@@ -79,17 +84,17 @@ const AdminNavigator = () => {
         options={{
           drawerLabel: 'Market',
           drawerIcon: ({ color, size }: { color: string; size: number }) => (
-            <Ionicons name="storefront" size={size} color={color} />
+            <Ionicons name="storefront" size={20} color={color} />
           ),
         }}
       />
       <Drawer.Screen
         name="Forum"
-        component={ForumWrapper}
+        component={ForumScreen}
         options={{
           drawerLabel: 'Forum',
           drawerIcon: ({ color, size }: { color: string; size: number }) => (
-            <Ionicons name="chatbubbles" size={size} color={color} />
+            <Ionicons name="chatbubbles" size={20} color={color} />
           ),
         }}
       />
@@ -99,7 +104,7 @@ const AdminNavigator = () => {
         options={{
           drawerLabel: 'Analysis',
           drawerIcon: ({ color, size }: { color: string; size: number }) => (
-            <Ionicons name="bar-chart" size={size} color={color} />
+            <Ionicons name="bar-chart" size={20} color={color} />
           ),
         }}
       />

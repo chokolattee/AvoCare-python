@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification - AvoCare</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 50px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 50px;
+            margin: 0 auto 20px;
+            animation: scaleIn 0.5s ease-out;
+        }
+
+        .icon-success { background: #4CAF50; color: white; }
+        .icon-error { background: #f44336; color: white; }
+
+        @keyframes scaleIn {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 28px;
+        }
+
+        p {
+            color: #666;
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+
+        .error-message {
+            color: #f44336;
+            font-weight: 500;
+        }
+
+        .button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 14px 40px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 10px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+
+        .button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .button-secondary {
+            background: #666;
+        }
+
+        .button-secondary:hover {
+            background: #555;
+        }
+
+        .button-primary {
+            background: #4CAF50;
+        }
+
+        .button-primary:hover {
+            background: #45a049;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .buttons-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .info-text {
+            margin-top: 20px; 
+            font-size: 14px; 
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🥑</div>
+
+        <!-- Loading -->
+        <div id="loading">
+            <div class="spinner"></div>
+            <h1>Verifying your email...</h1>
+            <p>Please wait while we confirm your email address.</p>
+        </div>
+
+        <!-- Success -->
+        <div id="success" class="hidden">
+            <div class="icon icon-success">✓</div>
+            <h1>Email Verified!</h1>
+            <p>Your email has been successfully verified.</p>
+            <p style="margin-top: 10px; color: #4CAF50; font-weight: 600;">
+                You can now sign in to AvoCare.
+            </p>
+            <div class="buttons-group">
+                <button onclick="openAuthScreen()" class="button button-primary">
+                    Continue to Sign In
+                </button>
+            </div>
+            <p class="info-text">
+                App not opening? Please open AvoCare manually and sign in.
+            </p>
+        </div>
+
+        <!-- Error -->
+        <div id="error" class="hidden">
+            <div class="icon icon-error">✕</div>
+            <h1>Verification Failed</h1>
+            <p class="error-message" id="error-message"></p>
+        </div>
+    </div>
+
+    <script>
+        // Parse URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const success = urlParams.get('success');
+        const error = urlParams.get('error');
+        const token = urlParams.get('token');
+        const alreadyVerified = urlParams.get('already_verified');
+
+        function openAuthScreen() {
+            // Redirect to AuthScreen with emailVerified flag
+            const appUrl = 'avocare://auth?emailVerified=true';
+            window.location.href = appUrl;
+            
+            // Show fallback message after 2 seconds
+            setTimeout(() => {
+                alert('If the app did not open, please open AvoCare manually and sign in.');
+            }, 2000);
+        }
+
+        function retryVerification() {
+            if (token) {
+                window.location.href = `/api/users/verify-email?token=${token}`;
+            } else {
+                alert('No verification token found. Please use the link from your email.');
+            }
+        }
+
+        function showSuccess() {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.add('hidden');
+            document.getElementById('success').classList.remove('hidden');
+            
+            // Auto-redirect to auth screen after 2 seconds
+            setTimeout(() => {
+                openAuthScreen();
+            }, 2000);
+        }
+
+        function showError(message) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('success').classList.add('hidden');
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('error').classList.remove('hidden');
+        }
+
+        // Handle page load based on URL parameters
+        window.addEventListener('DOMContentLoaded', () => {
+            if (success === 'true') {
+                if (alreadyVerified === 'true') {
+                    showSuccess();
+                } else {
+                    showSuccess();
+                }
+            } else if (error) {
+                let errorMessage;
+                switch(error) {
+                    case 'no_token':
+                        errorMessage = 'No verification token provided.';
+                        break;
+                    case 'invalid_token':
+                        errorMessage = 'Invalid verification token.';
+                        break;
+                    case 'expired':
+                        errorMessage = 'Verification link has expired. Please request a new one.';
+                        document.getElementById('retry-btn').textContent = 'Request New Link';
+                        document.getElementById('retry-btn').onclick = () => {
+                            window.location.href = 'avocare://request-verification';
+                        };
+                        break;
+                    case 'server_error':
+                        errorMessage = 'Server error occurred. Please try again later.';
+                        break;
+                    default:
+                        errorMessage = 'An unknown error occurred.';
+                }
+                showError(errorMessage);
+            } else if (!token) {
+                showError('No verification token found. Please use the link from your email.');
+            }
+        });
+    </script>
+</body>
+</html>

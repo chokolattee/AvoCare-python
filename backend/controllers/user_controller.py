@@ -1,162 +1,130 @@
-from flask import request, jsonify, current_app
+# controllers/user_controller.py
+from flask import request, jsonify
 from models.user import User
-from werkzeug.utils import secure_filename
 from utils.cloudinary_helper import CloudinaryHelper
-import os
-from datetime import datetime
+from utils.email_service import EmailService
 import re
+from datetime import datetime
 import cloudinary
 import cloudinary.uploader
-import cloudinary.api
 
 class UserController:
     @staticmethod
     def register():
-        """
-        Register a new user
-        Expects: multipart/form-data with name, email, password, role, image
-        """
+        """Register a new user with email/password or Google"""
         try:
-            # Log incoming request
             print("=" * 50)
             print("REGISTRATION REQUEST RECEIVED")
             print("=" * 50)
             
-            # Get form data
-            name = request.form.get('name')
-            email = request.form.get('email')
-            password = request.form.get('password')
-            role = request.form.get('role', 'user')
-            status = request.form.get('status', 'active')
+            # Parse JSON body
+            data = request.get_json() if request.is_json else {}
             
-            print(f"Name: {name}")
+            # Get data (support both JSON and form-data)
+            email = data.get('email') or request.form.get('email')
+            password = data.get('password') or request.form.get('password')
+            name = data.get('name') or request.form.get('name', '')
+            role = data.get('role') or request.form.get('role', 'user')
+            status = data.get('status') or request.form.get('status', 'active')
+            
+            # Google auth fields
+            firebase_uid = data.get('firebase_uid')
+            auth_provider = data.get('auth_provider', 'email')
+            google_photo = data.get('photo_url', '')
+            
             print(f"Email: {email}")
-            print(f"Role: {role}")
-            print(f"Status: {status}")
+            print(f"Auth Provider: {auth_provider}")
+            print(f"Firebase UID: {firebase_uid}")
             
             # Validate required fields
-            if not name or not email or not password:
-                return jsonify({
-                    'success': False,
-                    'message': 'Name, email, and password are required'
-                }), 400
+            if not email:
+                return jsonify({"success": False, "message": "Email is required."}), 400
+            
+            # For email auth, password is required
+            if auth_provider == 'email' and not password:
+                return jsonify({"success": False, "message": "Password is required."}), 400
             
             # Validate email format
             pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
             if not re.match(pattern, email):
-                return jsonify({
-                    'success': False,
-                    'message': 'Invalid email format'
-                }), 400
+                return jsonify({"success": False, "message": "Invalid email format."}), 400
             
-            # Validate password length
-            if len(password) < 6:
-                return jsonify({
-                    'success': False,
-                    'message': 'Password must be at least 6 characters long'
-                }), 400
+            # Validate password length (only for email auth)
+            if auth_provider == 'email' and len(password) < 6:
+                return jsonify({"success": False, "message": "Password must be at least 6 characters."}), 400
             
             # Check if user already exists
-            existing_user = User.objects(email=email).first()
+            existing_user = User.objects(email=email.lower()).first()
             if existing_user:
-                return jsonify({
-                    'success': False,
-                    'message': 'Email is already registered'
-                }), 409
+                return jsonify({"success": False, "message": "Email is already registered."}), 409
             
-            # Handle image upload to Cloudinary
-            image_url = ''
-            print(f"\nChecking for image upload...")
-            print(f"Files in request: {list(request.files.keys())}")
-            print(f"Request content type: {request.content_type}")
-            print(f"Request method: {request.method}")
-            print(f"Request form keys: {list(request.form.keys())}")
-            print(f"Request data length: {len(request.data) if request.data else 0}")
+            # Handle image
+            image_url = google_photo  # Use Google photo if available
             
-            # Debug: print all request attributes
-            print(f"\nDEBUG - Request details:")
-            print(f"  - Files dict: {dict(request.files)}")
-            print(f"  - Form dict: {dict(request.form)}")
-            
-            # Try to access files
-            try:
-                files_list = list(request.files)
-                print(f"  - Files list: {files_list}")
-                if files_list:
-                    for file_key in files_list:
-                        f = request.files.get(file_key)
-                        print(f"    - {file_key}: {f.filename if f else 'None'}")
-            except Exception as e:
-                print(f"  - Error listing files: {e}")
-            
-            # Handle image upload if present
+            # Check for uploaded image file
             if 'image' in request.files:
                 file = request.files['image']
-                print(f"\nImage file found: {file.filename}")
-                
-                if file and file.filename:
-                    # Validate image file
-                    if CloudinaryHelper.validate_image_file(file.filename):
-                        # Upload to Cloudinary under avocare/users folder
-                        print("Uploading image to Cloudinary...")
-                        upload_result = CloudinaryHelper.upload_image(
-                            file,
-                            folder="avocare/users",
-                            prefix=f"user_{email.split('@')[0]}"
-                        )
-                        if upload_result['success']:
-                            image_url = upload_result['url']
-                            print(f"✅ Image uploaded successfully: {image_url}")
-                        else:
-                            print(f"⚠️ Image upload failed: {upload_result.get('error')}")
-                            # Continue without image
-                    else:
-                        print(f"❌ Invalid file extension for: {file.filename}")
-                        # Continue without image
-            else:
-                print("No image file in request - continuing without image")
+                if file and file.filename and CloudinaryHelper.validate_image_file(file.filename):
+                    upload_result = CloudinaryHelper.upload_image(
+                        file,
+                        folder="avocare/users",
+                        prefix=f"user_{email.split('@')[0]}"
+                    )
+                    if upload_result['success']:
+                        image_url = upload_result['url']
             
             # Create new user
-            print(f"\nCreating user in database...")
             user = User(
-                name=name,
+                name=name or email.split('@')[0],
                 email=email.lower(),
                 image=image_url,
                 role=role,
-                status=status
+                status=status,
+                firebase_uid=firebase_uid,
+                auth_provider=auth_provider,
+                email_verified=(auth_provider == 'google')  # Google emails are pre-verified
             )
-            user.set_password(password)
+            
+            # Set password (only for email auth)
+            if auth_provider == 'email' and password:
+                user.set_password(password)
+            
             user.save()
             
-            print(f"✅ User created successfully!")
-            print(f"User ID: {user.id}")
-            print(f"User Image: {user.image}")
+            print(f"✅ User created successfully! ID: {user.id}")
+            
+            # Send verification email (only for email auth)
+            email_sent = False
+            if auth_provider == 'email':
+                verification_token = user.generate_verification_token()
+                user.save()  # Save the verification token
+                email_sent = EmailService.send_verification_email(user.email, user.name, verification_token)
+                print(f"📧 Verification email sent: {email_sent}")
+            
+            message = "Registration successful!"
+            if auth_provider == 'email':
+                if email_sent:
+                    message = "Registration successful! Please check your email to verify your account."
+                else:
+                    message = "Registration successful! However, we couldn't send the verification email. Please contact support."
+            
             print("=" * 50)
             
-            # Remove password from response
-            user_data = user.to_dict()
-            
             return jsonify({
-                'success': True,
-                'message': 'User registered successfully',
-                'user': user_data
+                "success": True,
+                "user": user.to_dict(),
+                "message": message
             }), 201
             
         except Exception as e:
             print(f"❌ Registration error: {str(e)}")
             import traceback
             traceback.print_exc()
-            return jsonify({
-                'success': False,
-                'message': f'Registration failed: {str(e)}'
-            }), 500
+            return jsonify({"success": False, "message": str(e)}), 500
     
     @staticmethod
     def login():
-        """
-        Login user
-        Expects: JSON with email and password
-        """
+        """Login with email/password or Google"""
         try:
             print("=" * 50)
             print("LOGIN REQUEST RECEIVED")
@@ -165,92 +133,178 @@ class UserController:
             data = request.get_json()
             
             if not data:
-                return jsonify({
-                    'success': False,
-                    'message': 'No data provided'
-                }), 400
+                return jsonify({'success': False, 'message': 'No data provided'}), 400
             
             email = data.get('email')
             password = data.get('password')
+            firebase_uid = data.get('firebase_uid')
+            id_token = data.get('id_token')
             
             print(f"Email: {email}")
+            print(f"Has Firebase UID: {bool(firebase_uid)}")
+            print(f"Has ID Token: {bool(id_token)}")
             
-            # Validate required fields
-            if not email or not password:
-                return jsonify({
-                    'success': False,
-                    'message': 'Email and password are required'
-                }), 400
+            if not email:
+                return jsonify({'success': False, 'message': 'Email is required'}), 400
             
-            # Find user by email
+            # Find user
             user = User.objects(email=email.lower()).first()
             
-            if not user:
-                print(f"❌ User not found: {email}")
-                return jsonify({
-                    'success': False,
-                    'message': 'No account found with this email'
-                }), 404
+            # Google Sign-In Flow
+            if firebase_uid or id_token:
+                # If user doesn't exist, create them (auto-register)
+                if not user:
+                    print("📝 Auto-registering Google user...")
+                    user = User(
+                        name=data.get('name', email.split('@')[0]),
+                        email=email.lower(),
+                        image=data.get('photo_url', ''),
+                        role='user',
+                        status='active',
+                        firebase_uid=firebase_uid,
+                        auth_provider='google',
+                        email_verified=True  # Google emails are pre-verified
+                    )
+                    user.save()
+                    print(f"✅ New Google user created: {user.id}")
+                else:
+                    # Update existing user with Firebase UID if not set
+                    if not user.firebase_uid:
+                        user.firebase_uid = firebase_uid
+                        user.auth_provider = 'google'
+                        user.email_verified = True
+                        user.save()
+                        print("✅ Updated existing user with Firebase UID")
             
-            print(f"User found: {user.name}")
+            # Email/Password Flow
+            else:
+                if not password:
+                    return jsonify({'success': False, 'message': 'Password is required'}), 400
+                
+                if not user:
+                    return jsonify({'success': False, 'message': 'No account found with this email'}), 404
+                
+                # Check password
+                if not user.check_password(password):
+                    return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
+                
+                # Check email verification
+                if not user.email_verified:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Please verify your email before logging in. Check your inbox for the verification link.',
+                        'needs_verification': True
+                    }), 403
             
             # Check if user is active
             if user.status != 'active':
-                return jsonify({
-                    'success': False,
-                    'message': 'Account is not active. Please contact administrator.'
-                }), 403
-            
-            # Check password
-            if not user.check_password(password):
-                print(f"❌ Invalid password")
-                return jsonify({
-                    'success': False,
-                    'message': 'Invalid email or password'
-                }), 401
-            
-            print(f"✅ Password verified")
+                return jsonify({'success': False, 'message': 'Account is not active. Please contact administrator.'}), 403
             
             # Generate token
-            print("Generating token...")
             token = user.generate_token()
             
             if not token:
-                print(f"❌ Token generation failed")
-                return jsonify({
-                    'success': False,
-                    'message': 'Failed to generate authentication token'
-                }), 500
+                return jsonify({'success': False, 'message': 'Failed to generate authentication token'}), 500
             
-            print(f"✅ Token generated successfully")
-            print(f"Token (first 20 chars): {token[:20]}...")
+            print(f"✅ Login successful for {user.email}")
             print("=" * 50)
-            
-            # Remove password from response
-            user_data = user.to_dict()
             
             return jsonify({
                 'success': True,
                 'message': 'Login successful',
                 'token': token,
-                'user': user_data
+                'user': user.to_dict()
             }), 200
             
         except Exception as e:
             print(f"❌ Login error: {str(e)}")
             import traceback
             traceback.print_exc()
+            return jsonify({'success': False, 'message': f'Login failed: {str(e)}'}), 500
+    
+    @staticmethod
+    def verify_email():
+        """Verify user email with token"""
+        try:
+            token = request.args.get('token')
+            
+            if not token:
+                return jsonify({'success': False, 'message': 'Verification token is required'}), 400
+            
+            # Find user by verification token
+            user = User.objects(verification_token=token).first()
+            
+            if not user:
+                return jsonify({'success': False, 'message': 'Invalid or expired verification token'}), 404
+            
+            # Check if token has expired
+            if user.verification_token_expires and user.verification_token_expires < datetime.utcnow():
+                return jsonify({'success': False, 'message': 'Verification token has expired. Please request a new one.'}), 410
+            
+            # Mark email as verified
+            user.email_verified = True
+            user.verification_token = None
+            user.verification_token_expires = None
+            user.save()
+            
+            print(f"✅ Email verified for {user.email}")
+            
             return jsonify({
-                'success': False,
-                'message': f'Login failed: {str(e)}'
-            }), 500
+                'success': True,
+                'message': 'Email verified successfully! You can now log in.'
+            }), 200
+            
+        except Exception as e:
+            print(f"❌ Email verification error: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'success': False, 'message': str(e)}), 500
+    
+    @staticmethod
+    def resend_verification():
+        """Resend verification email"""
+        try:
+            data = request.get_json()
+            email = data.get('email')
+            
+            if not email:
+                return jsonify({'success': False, 'message': 'Email is required'}), 400
+            
+            user = User.objects(email=email.lower()).first()
+            
+            if not user:
+                return jsonify({'success': False, 'message': 'User not found'}), 404
+            
+            if user.email_verified:
+                return jsonify({'success': False, 'message': 'Email is already verified'}), 400
+            
+            # Generate new verification token
+            verification_token = user.generate_verification_token()
+            user.save()
+            
+            # Send verification email
+            email_sent = EmailService.send_verification_email(user.email, user.name, verification_token)
+            
+            if email_sent:
+                return jsonify({
+                    'success': True,
+                    'message': 'Verification email sent! Please check your inbox.'
+                }), 200
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Failed to send verification email. Please try again later.'
+                }), 500
+            
+        except Exception as e:
+            print(f"❌ Resend verification error: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'success': False, 'message': str(e)}), 500
     
     @staticmethod
     def get_user_profile():
-        """
-        Get current user's profile
-        Requires authentication
-        """
+        """Get current user's profile"""
         try:
             user = request.current_user
             user_data = user.to_dict()
@@ -268,10 +322,7 @@ class UserController:
     
     @staticmethod
     def update_user_profile():
-        """
-        Update current user's profile
-        Requires authentication
-        """
+        """Update current user's profile"""
         try:
             user = request.current_user
             
@@ -375,10 +426,7 @@ class UserController:
     
     @staticmethod
     def get_all_users():
-        """
-        Get all users (Admin only)
-        Requires admin authentication
-        """
+        """Get all users (Admin only)"""
         try:
             users = User.objects()
             users_list = []
@@ -400,9 +448,7 @@ class UserController:
     
     @staticmethod
     def get_user_by_id(user_id):
-        """
-        Get user by ID (Admin only)
-        """
+        """Get user by ID (Admin only)"""
         try:
             user = User.objects(id=user_id).first()
             
@@ -426,10 +472,56 @@ class UserController:
             }), 500
     
     @staticmethod
+    def update_user(user_id):
+        """Update user status and role (Admin only)"""
+        try:
+            user = User.objects(id=user_id).first()
+            
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found'
+                }), 404
+            
+            data = request.get_json()
+            
+            # Update role if provided
+            if 'role' in data:
+                role = data.get('role')
+                if role not in ['user', 'admin']:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Invalid role. Must be user or admin'
+                    }), 400
+                user.role = role
+            
+            # Update status if provided
+            if 'status' in data:
+                status = data.get('status')
+                if status not in ['active', 'inactive', 'deactivated']:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Invalid status. Must be active, inactive, or deactivated'
+                    }), 400
+                user.status = status
+            
+            user.save()
+            
+            return jsonify({
+                'success': True,
+                'message': 'User updated successfully',
+                'user': user.to_dict()
+            }), 200
+            
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'message': f'Failed to update user: {str(e)}'
+            }), 500
+    
+    @staticmethod
     def delete_user(user_id):
-        """
-        Delete user by ID (Admin only)
-        """
+        """Delete user by ID (Admin only)"""
         try:
             user = User.objects(id=user_id).first()
             

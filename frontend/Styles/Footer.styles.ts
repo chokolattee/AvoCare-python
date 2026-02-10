@@ -54,7 +54,7 @@ export const styles = StyleSheet.create({
   avocadoImage: {
     width: 40,
     height: 40,
-    resizeMode: 'contain',
+    // resizeMode deprecated, use Image prop
   },
   brandName: {
     fontSize: 24,

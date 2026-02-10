@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+import json
 import cloudinary
 from cloudinary import uploader as cloudinary_uploader
 from models.post import Post, Comment
@@ -207,6 +208,7 @@ def update_post(post_id):
         content      = data.get('content')
         category     = data.get('category')
         remove_image = data.get('removeImage', False)
+        keep_image_urls = data.get('keepImageUrls', [])
         image_file   = None
         
     else:
@@ -214,7 +216,12 @@ def update_post(post_id):
         title        = request.form.get('title')
         content      = request.form.get('content')
         category     = request.form.get('category')
-        remove_image = False
+        remove_image = request.form.get('removeImage', 'false').lower() == 'true'
+        keep_image_urls_str = request.form.get('keepImageUrls', '[]')
+        try:
+            keep_image_urls = json.loads(keep_image_urls_str)
+        except:
+            keep_image_urls = []
         image_file   = request.files.get('image')
 
     # ---------------------------------------------------------------------------
@@ -233,6 +240,17 @@ def update_post(post_id):
     # ---------------------------------------------------------------------------
     # Upload new images to Cloudinary (if provided)
     # ---------------------------------------------------------------------------
+    # Start with existing images that should be kept
+    new_image_urls = []
+    
+    # Filter existing images - only keep those in keep_image_urls list
+    if hasattr(post, 'image_urls') and post.image_urls:
+        new_image_urls = [url for url in post.image_urls if url in keep_image_urls]
+    elif hasattr(post, 'image_url') and post.image_url:
+        # Handle old single image format
+        if post.image_url in keep_image_urls:
+            new_image_urls = [post.image_url]
+    
     # Handle multiple new images
     image_files = request.files.getlist('images')
     for img_file in image_files[:5]:  # Limit to 5 images
@@ -243,9 +261,7 @@ def update_post(post_id):
                     folder='avocare/forum',
                     resource_type='image'
                 )
-                if not hasattr(post, 'image_urls') or post.image_urls is None:
-                    post.image_urls = []
-                post.image_urls.append(upload_result.get('secure_url'))
+                new_image_urls.append(upload_result.get('secure_url'))
             except Exception as e:
                 print(f"Cloudinary upload error: {e}")
                 return jsonify({'error': f'Image upload failed: {str(e)}'}), 500
@@ -258,18 +274,18 @@ def update_post(post_id):
                 folder='avocare/forum',
                 resource_type='image'
             )
-            if not hasattr(post, 'image_urls') or post.image_urls is None:
-                post.image_urls = []
-            post.image_urls.append(upload_result.get('secure_url'))
+            new_image_urls.append(upload_result.get('secure_url'))
         except Exception as e:
             print(f"Cloudinary upload error: {e}")
             return jsonify({'error': 'Image upload failed'}), 500
     elif remove_image:
-        # Frontend explicitly asked to clear the existing images
-        if hasattr(post, 'image_urls'):
-            post.image_urls = []
-        if hasattr(post, 'image_url'):
-            post.image_url = None
+        # Frontend explicitly asked to clear all the existing images
+        new_image_urls = []
+    
+    # Update image_urls field
+    post.image_urls = new_image_urls
+    if hasattr(post, 'image_url'):
+        post.image_url = None  # Clear old single image field
 
     # ---------------------------------------------------------------------------
     # Update text fields with censored content

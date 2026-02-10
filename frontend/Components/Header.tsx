@@ -6,6 +6,7 @@ import {
   Image,
   Dimensions,
   Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -62,14 +63,13 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
 
   useEffect(() => {
     loadUser();
-    
-    const handleAuthChange = () => {
-      loadUser();
-    };
-    
-    if (typeof window !== 'undefined') {
+
+    // Only add window event listeners on web
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const handleAuthChange = () => {
+        loadUser();
+      };
       window.addEventListener('authChange', handleAuthChange);
-      
       return () => {
         window.removeEventListener('authChange', handleAuthChange);
       };
@@ -97,7 +97,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
       
       setUser(null);
       
-      if (typeof window !== 'undefined') {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.dispatchEvent(new Event('authChange'));
       }
       
@@ -124,10 +124,15 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
   };
 
   const navigateTo = (screenName: string) => {
-    // Tab screens should always redirect to MainTabs with the correct screen
     const tabScreens = ['Home', 'CommunityStack', 'Scan', 'Market', 'Profile'];
     if (tabScreens.includes(screenName)) {
-      navigation.navigate('MainTabs', { screen: screenName });
+      const { CommonActions } = require('@react-navigation/native');
+      navigation.dispatch(
+        CommonActions.navigate({
+          name: 'MainTabs',
+          params: { screen: screenName },
+        })
+      );
     } else {
       navigation.navigate(screenName);
     }
@@ -137,7 +142,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
     <View style={styles.container}>
       <View style={styles.gradientBackground}>
         <View style={styles.topHeader}>
-          {!isDesktop && onMenuPress && (
+          {onMenuPress && (
             <TouchableOpacity 
               style={styles.menuButton} 
               onPress={onMenuPress}
@@ -156,7 +161,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
           >
             <View style={styles.logoWrapper}>
               <View style={styles.logoIconContainer}>
-                <Image source={avocadoLogo} style={styles.avocadoImage} />
+                <Image source={avocadoLogo} style={styles.avocadoImage} resizeMode="contain" />
               </View>
               <View style={styles.logoTextContainer}>
                 <Text style={styles.logoText}>AvoCare</Text>
@@ -174,7 +179,6 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
               >
                 <Text style={styles.navLinkText}>HOME</Text>
               </TouchableOpacity>
-              
               <TouchableOpacity 
                 style={styles.navLink}
                 onPress={() => navigateTo('CommunityStack')}
@@ -182,7 +186,6 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
               >
                 <Text style={styles.navLinkText}>COMMUNITY</Text>
               </TouchableOpacity>
-              
               <TouchableOpacity 
                 style={styles.navLink}
                 onPress={() => navigateTo('Scan')}
@@ -190,7 +193,6 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
               >
                 <Text style={styles.navLinkText}>SCAN</Text>
               </TouchableOpacity>
-              
               <TouchableOpacity 
                 style={styles.navLink}
                 onPress={() => navigateTo('Market')}
@@ -198,7 +200,6 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
               >
                 <Text style={styles.navLinkText}>MARKET</Text>
               </TouchableOpacity>
-              
               <TouchableOpacity 
                 style={styles.navLink}
                 onPress={() => navigateTo('About')}
@@ -219,7 +220,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
                 >
                   <View style={styles.userAvatarContainer}>
                     {user.image ? (
-                      <Image source={{ uri: user.image }} style={styles.userImage} />
+                      <Image source={{ uri: user.image }} style={styles.userImage} resizeMode="cover" />
                     ) : (
                       <View style={styles.defaultAvatar}>
                         <Text style={styles.avatarText}>
@@ -236,7 +237,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
                     <View style={styles.dropdownHeader}>
                       <View style={styles.dropdownAvatarContainer}>
                         {user.image ? (
-                          <Image source={{ uri: user.image }} style={styles.dropdownAvatar} />
+                          <Image source={{ uri: user.image }} style={styles.dropdownAvatar} resizeMode="cover" />
                         ) : (
                           <View style={styles.dropdownDefaultAvatar}>
                             <Text style={styles.dropdownAvatarText}>
@@ -302,7 +303,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
                 activeOpacity={0.8}
               >
                 <LinearGradient
-                  colors={['#90b481', '#7ba05b']}
+                  colors={["#90b481", "#7ba05b"]}
                   style={styles.loginButtonGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}

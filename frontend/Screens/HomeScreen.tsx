@@ -328,7 +328,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
               />
               <LinearGradient
                 colors={['rgba(0,0,0,0.2)', 'rgba(93,135,62,0.8)']}
-                style={styles.carouselOverlay}
+                style={styles.carouselOverlay} 
               />
             </View>
 

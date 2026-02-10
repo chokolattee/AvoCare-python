@@ -179,12 +179,24 @@ def predict():
         if model:
             # Preprocess and predict
             processed_image = preprocess_image(image_bytes)
-            prediction = model.predict(processed_image, verbose=0)
+            predictions = model.predict(processed_image, verbose=0)
             
-            # Get prediction results
-            class_idx = np.argmax(prediction[0])
-            confidence = float(prediction[0][class_idx])
-            predicted_class = CLASS_NAMES[class_idx]
+            # Handle multi-output models (classification + bbox)
+            if isinstance(predictions, list) and len(predictions) == 2:
+                # Object detection model with [class_output, bbox_output]
+                class_predictions = predictions[0][0]
+                bbox_predictions = predictions[1][0]  # [xmin, ymin, xmax, ymax]
+                class_idx = np.argmax(class_predictions)
+                confidence = float(class_predictions[class_idx])
+                predicted_class = CLASS_NAMES[class_idx]
+                bbox = [float(x) for x in bbox_predictions]
+            else:
+                # Classification-only model
+                class_predictions = predictions[0]
+                class_idx = np.argmax(class_predictions)
+                confidence = float(class_predictions[class_idx])
+                predicted_class = CLASS_NAMES[class_idx]
+                bbox = None
             
             # Determine properties based on predicted class
             if predicted_class == "underripe":
@@ -213,10 +225,13 @@ def predict():
                     "texture": texture,
                     "confidence": float(confidence),  # Convert to Python float
                     "days_to_ripe": days_to_ripe,
-                    "recommendation": recommendation
+                    "recommendation": recommendation,
+                    **({
+                        "bbox": bbox  # Include bbox if model supports object detection
+                    } if bbox is not None else {})
                 },
                 "all_probabilities": {
-                    CLASS_NAMES[i]: float(prediction[0][i])  # Convert to Python float
+                    CLASS_NAMES[i]: float(class_predictions[i])  # Use class_predictions variable
                     for i in range(len(CLASS_NAMES))
                 }
             }

@@ -13,8 +13,9 @@ import {
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import ripenessApi, { RipenessResult } from '../Services/ripenessApi'; // You'll need to import this
+import ripenessApi, { RipenessResult } from '../Services/ripenessApi';
 import leavesApi, { LeavesResult } from '../Services/leavesApi';
+import { styles } from '../Styles/ScanScreen.syles';
 
 // Updated AnalysisResult type to handle both fruit and leaf analysis
 export interface AnalysisResult {
@@ -28,6 +29,7 @@ export interface AnalysisResult {
   recommendation?: string;
   // Leaf-specific fields
   leafClass?: string;
+  bbox?: [number, number, number, number]; // [x, y, width, height] in normalized coordinates (0-1)
   // Common fields
   confidence: number;
   all_probabilities?: {
@@ -84,8 +86,33 @@ const ScanScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('FRUIT');
   const [facing, setFacing] = useState<CameraType>('back');
   const [flash, setFlash] = useState<'off' | 'on'>('off');
-  
+  const [saving, setSaving] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  
+  // Save analysis handler
+  const handleSaveAnalysis = async () => {
+    if (!result || !capturedImage) return;
+    setSaving(true);
+    try {
+      // Example: send to backend (adjust endpoint as needed)
+      const response = await fetch('http://localhost:5000/api/save-analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageUri: capturedImage,
+          analysis: result,
+        }),
+      });
+      if (!response.ok) throw new Error('Failed to save analysis');
+      Alert.alert('Success', 'Analysis saved successfully!');
+    } catch (error) {
+      Alert.alert('Save Failed', error instanceof Error ? error.message : 'Could not save analysis.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Health check on mount
   useEffect(() => {
@@ -219,6 +246,8 @@ const ScanScreen: React.FC = () => {
           days_to_ripe: apiResult.prediction.days_to_ripe,
           recommendation: apiResult.prediction.recommendation,
           all_probabilities: apiResult.all_probabilities,
+          // Use model bbox if available, otherwise use centered default for visualization
+          bbox: apiResult.prediction.bbox || [0.2, 0.2, 0.6, 0.6],
         };
       } else if (activeTab === 'LEAF / STEM') {
         console.log('📤 Sending to leaf disease API...');
@@ -234,6 +263,8 @@ const ScanScreen: React.FC = () => {
           confidence: apiResult.prediction.confidence,
           recommendation: LEAF_RECOMMENDATIONS[apiResult.prediction.class],
           all_probabilities: apiResult.prediction.all_probabilities,
+          // Use model bbox if available, otherwise use centered default for visualization
+          bbox: apiResult.prediction.bbox || [0.25, 0.25, 0.5, 0.5],
         };
       } else {
         // For PEST and DISEASE tabs - not yet implemented
@@ -449,6 +480,70 @@ const ScanScreen: React.FC = () => {
               <Text style={styles.ripenessDescription}>{RIPENESS_DESCRIPTIONS[result.ripeness]}</Text>
             </View>
 
+            {/* Side-by-Side Image Comparison for FRUIT */}
+            <View style={styles.comparisonContainer}>
+              <Text style={styles.comparisonTitle}>🥑 Ripeness Detection Comparison</Text>
+              <View style={styles.imageComparisonRow}>
+                {/* Original Image */}
+                <View style={styles.imageComparisonItem}>
+                  <Text style={styles.imageComparisonLabel}>Original</Text>
+                  <View style={styles.imageComparisonBox}>
+                    <Image
+                      source={{ uri: capturedImage }}
+                      style={styles.comparisonImage}
+                      resizeMode="cover"
+                    />
+                  </View>
+                </View>
+
+                {/* Detected/Annotated Image */}
+                <View style={styles.imageComparisonItem}>
+                  <Text style={styles.imageComparisonLabel}>Detected</Text>
+                  <View style={styles.imageComparisonBox}>
+                    <Image
+                      source={{ uri: capturedImage }}
+                      style={styles.comparisonImage}
+                      resizeMode="cover"
+                    />
+                    {/* Bounding Box Overlay for Fruit */}
+                    {result.bbox && (
+                      <View
+                        style={[
+                          styles.boundingBox,
+                          {
+                            left: `${result.bbox[0] * 100}%`,
+                            top: `${result.bbox[1] * 100}%`,
+                            width: `${result.bbox[2] * 100}%`,
+                            height: `${result.bbox[3] * 100}%`,
+                            borderColor: RIPENESS_COLORS[result.ripeness],
+                          },
+                        ]}
+                      >
+                        <View style={[styles.detectionLabel, { backgroundColor: RIPENESS_COLORS[result.ripeness] }]}>
+                          <Text style={styles.detectionLabelText}>{result.ripeness}</Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+              <Text style={styles.comparisonHint}>
+                The bounding box highlights the analyzed fruit area
+              </Text>
+            </View>
+
+            {/* Ripeness Details Card */}
+            <View style={styles.diseaseDetailsCard}>
+              <Text style={styles.diseaseDetailsTitle}>🥑 Ripeness Details</Text>
+              <Text style={styles.diseaseDetailsDescription}>
+                {result.ripeness === 'underripe' 
+                  ? 'The avocado is still underripe and firm. The skin may be bright green and the fruit will feel hard when gently squeezed. Allow it to ripen at room temperature for 4-7 days.'
+                  : result.ripeness === 'ripe'
+                  ? 'The avocado is perfectly ripe! The skin has darkened and the fruit yields slightly to gentle pressure. This is the ideal time to enjoy it for maximum flavor and creamy texture.'
+                  : 'The avocado is overripe. The skin is very dark and the fruit feels very soft. While it may be too mushy for slicing, it\'s still great for guacamole, smoothies, or baking.'}
+              </Text>
+            </View>
+
             <View style={styles.resultInfo}>
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>RIPENESS LEVEL</Text>
@@ -510,8 +605,8 @@ const ScanScreen: React.FC = () => {
             )}
 
             <View style={styles.buttonGroup}>
-              <TouchableOpacity style={styles.saveButton}>
-                <Text style={styles.saveButtonText}>SAVE ANALYSIS</Text>
+              <TouchableOpacity style={styles.saveButton} onPress={handleSaveAnalysis} disabled={saving}>
+                <Text style={styles.saveButtonText}>{saving ? 'SAVING...' : 'SAVE ANALYSIS'}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.scanAgainButton} onPress={resetScan}>
                 <Text style={styles.scanAgainButtonText}>SCAN AGAIN</Text>
@@ -527,6 +622,72 @@ const ScanScreen: React.FC = () => {
             <View style={[styles.ripnessIndicator, { backgroundColor: LEAF_COLORS[result.leafClass] }]}>
               <Text style={styles.ripenessLevel}>{result.leafClass.toUpperCase()}</Text>
               <Text style={styles.ripenessDescription}>{LEAF_DESCRIPTIONS[result.leafClass]}</Text>
+            </View>
+
+            {/* Side-by-Side Image Comparison */}
+            <View style={styles.comparisonContainer}>
+              <Text style={styles.comparisonTitle}>🔬 Detection Comparison</Text>
+              <View style={styles.imageComparisonRow}>
+                {/* Original Image */}
+                <View style={styles.imageComparisonItem}>
+                  <Text style={styles.imageComparisonLabel}>Original</Text>
+                  <View style={styles.imageComparisonBox}>
+                    <Image
+                      source={{ uri: capturedImage }}
+                      style={styles.comparisonImage}
+                      resizeMode="cover"
+                    />
+                  </View>
+                </View>
+
+                {/* Detected/Annotated Image */}
+                <View style={styles.imageComparisonItem}>
+                  <Text style={styles.imageComparisonLabel}>Detected</Text>
+                  <View style={styles.imageComparisonBox}>
+                    <Image
+                      source={{ uri: capturedImage }}
+                      style={styles.comparisonImage}
+                      resizeMode="cover"
+                    />
+                    {/* Bounding Box Overlay */}
+                    {result.bbox && (
+                      <View
+                        style={[
+                          styles.boundingBox,
+                          {
+                            left: `${result.bbox[0] * 100}%`,
+                            top: `${result.bbox[1] * 100}%`,
+                            width: `${result.bbox[2] * 100}%`,
+                            height: `${result.bbox[3] * 100}%`,
+                            borderColor: LEAF_COLORS[result.leafClass],
+                          },
+                        ]}
+                      >
+                        <View style={[styles.detectionLabel, { backgroundColor: LEAF_COLORS[result.leafClass] }]}>
+                          <Text style={styles.detectionLabelText}>{result.leafClass}</Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+              <Text style={styles.comparisonHint}>
+                The bounding box highlights the detected disease area
+              </Text>
+            </View>
+
+            {/* Disease Details Card */}
+            <View style={styles.diseaseDetailsCard}>
+              <Text style={styles.diseaseDetailsTitle}>📋 Disease Details</Text>
+              <Text style={styles.diseaseDetailsDescription}>
+                {result.leafClass === 'healthy' 
+                  ? 'No disease detected. The plant appears to be in good health with no visible signs of disease or pest infestation.'
+                  : result.leafClass === 'anthracnose'
+                  ? 'Anthracnose is a fungal disease that causes dark lesions on leaves and stems. It thrives in warm, humid conditions and can spread rapidly if not treated.'
+                  : result.leafClass === 'nutrient deficiency'
+                  ? 'Nutrient deficiency occurs when the plant lacks essential minerals like nitrogen, phosphorus, or potassium. This manifests as yellowing leaves, stunted growth, or discoloration.'
+                  : 'Pest infestation detected. Pests can damage leaves, stems, and fruits, leading to reduced plant health and yield. Common pests include aphids, thrips, and mites.'}
+              </Text>
             </View>
 
             <View style={styles.resultInfo}>
@@ -572,8 +733,8 @@ const ScanScreen: React.FC = () => {
             )}
 
             <View style={styles.buttonGroup}>
-              <TouchableOpacity style={styles.saveButton}>
-                <Text style={styles.saveButtonText}>SAVE ANALYSIS</Text>
+              <TouchableOpacity style={styles.saveButton} onPress={handleSaveAnalysis} disabled={saving}>
+                <Text style={styles.saveButtonText}>{saving ? 'SAVING...' : 'SAVE ANALYSIS'}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.scanAgainButton} onPress={resetScan}>
                 <Text style={styles.scanAgainButtonText}>SCAN AGAIN</Text>
@@ -630,497 +791,5 @@ const ScanScreen: React.FC = () => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  topTabContainer: {
-    backgroundColor: '#fff',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  topTabContentContainer: {
-    gap: 8,
-  },
-  topTab: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#f5f5f5',
-  },
-  topTabActive: {
-    backgroundColor: '#4CAF50',
-  },
-  topTabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
-  topTabTextActive: {
-    color: '#fff',
-  },
-  ripnessIndicator: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ripenessLevel: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-  ripenessDescription: {
-    fontSize: 14,
-    color: '#fff',
-    textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.2)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-  probabilityCard: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  probabilityTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
-  },
-  probabilityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  probabilityLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#666',
-    width: 100,
-    marginRight: 8,
-    textTransform: 'capitalize',
-  },
-  probabilityBar: {
-    flex: 1,
-    height: 20,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 10,
-    overflow: 'hidden',
-    marginRight: 8,
-  },
-  probabilityFill: {
-    height: '100%',
-    borderRadius: 10,
-  },
-  probabilityValue: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#333',
-    width: 50,
-    textAlign: 'right',
-  },
-  recommendationCard: {
-    backgroundColor: '#e8f5e9',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
-  },
-  recommendationTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2e7d32',
-    marginBottom: 8,
-  },
-  recommendationText: {
-    fontSize: 14,
-    color: '#1b5e20',
-    lineHeight: 20,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    padding: 20,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: Platform.OS === 'ios' ? 100 : 80,
-  },
-  cameraArea: {
-    width: '100%',
-    height: 500,
-    backgroundColor: '#000',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  camera: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  frameOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 10,
-    pointerEvents: 'none',
-  },
-  frameCorner: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    borderColor: '#4CAF50',
-  },
-  topLeft: {
-    top: 20,
-    left: 20,
-    borderTopWidth: 3,
-    borderLeftWidth: 3,
-  },
-  topRight: {
-    top: 20,
-    right: 20,
-    borderTopWidth: 3,
-    borderRightWidth: 3,
-  },
-  bottomLeft: {
-    bottom: 20,
-    left: 20,
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
-  },
-  bottomRight: {
-    bottom: 20,
-    right: 20,
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-  },
-  cameraControls: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    zIndex: 20,
-    gap: 12,
-  },
-  controlButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  controlButtonActive: {
-    backgroundColor: '#4CAF50',
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  cameraStatus: {
-    position: 'absolute',
-    top: 80,
-    left: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    zIndex: 20,
-  },
-  cameraStatusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4CAF50',
-    marginRight: 8,
-  },
-  cameraStatusText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  scanInstruction: {
-    position: 'absolute',
-    bottom: 100,
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingVertical: 12,
-    zIndex: 20,
-  },
-  capturedImage: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  placeholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#e8f5e9',
-    padding: 20,
-  },
-  placeholderIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  placeholderTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  placeholderText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    maxWidth: 280,
-  },
-  progressOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 30,
-  },
-  progressCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 24,
-    alignItems: 'center',
-    minWidth: 200,
-  },
-  progressText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginTop: 16,
-  },
-  progressSubtext: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 8,
-  },
-  resetButton: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(239, 68, 68, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  resultCard: {
-    backgroundColor: '#fff',
-    margin: 16,
-    borderRadius: 12,
-    padding: 16,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  tabContainer: {
-    marginBottom: 16,
-  },
-  tabContentContainer: {
-    paddingRight: 16,
-  },
-  tab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderRadius: 20,
-    backgroundColor: '#f5f5f5',
-  },
-  tabActive: {
-    backgroundColor: '#4CAF50',
-  },
-  tabText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666'
-  },
-  tabTextActive: {
-    color: '#fff',
-  },
-  resultInfo: {
-    marginBottom: 16,
-  },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  resultLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    letterSpacing: 0.5,
-  },
-  resultValue: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333',
-  },
-  buttonGroup: {
-    gap: 12,
-  },
-  saveButton: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  scanAgainButton: {
-    backgroundColor: '#fff',
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#4CAF50',
-  },
-  scanAgainButtonText: {
-    color: '#4CAF50',
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  actionButtons: {
-    padding: 20,
-    gap: 12,
-    alignItems: 'center',
-  },
-  captureButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#4CAF50',
-  },
-  captureInner: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#4CAF50',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    gap: 8,
-    width: '100%',
-    maxWidth: 300,
-  },
-  primaryButton: {
-    backgroundColor: '#4CAF50',
-  },
-  secondaryButton: {
-    backgroundColor: '#fff',
-    borderWidth: 2,
-    borderColor: '#4CAF50',
-  },
-  actionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  secondaryButtonText: {
-    color: '#4CAF50',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  instructions: {
-    textAlign: 'center',
-    color: '#666',
-    fontSize: 14,
-    paddingHorizontal: 20,
-    marginTop: 16,
-    lineHeight: 20,
-  },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  permissionButton: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  permissionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
 
 export default ScanScreen;

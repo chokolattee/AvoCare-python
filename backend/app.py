@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from mongoengine import connect
 import cloudinary
@@ -58,15 +58,7 @@ def create_app():
     # ============================================================================
     
     # ENHANCED: Enable CORS with proper configuration for production
-    CORS(app, 
-         resources={r"/*": {
-             "origins": "*",  # In production, replace with specific domains
-             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": ["Content-Type", "Authorization"],
-             "expose_headers": ["Content-Type", "Authorization"],
-             "supports_credentials": True,
-             "max_age": 3600  # Cache preflight requests for 1 hour
-         }})
+    CORS(app)
     
     # Register blueprints
     from routes.user_routes import user_routes
@@ -147,6 +139,12 @@ def create_app():
         methods = ','.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
         print(f"   {methods:6} {rule.rule}")
     print("=" * 50 + "\n")
+
+    @app.route('/verify-email.html')
+    def serve_verification_page():
+        """Serve the email verification HTML page"""
+        static_dir = os.path.join(os.path.dirname(__file__), 'static')
+        return send_from_directory(static_dir, 'verify-email.html')
     
     return app
 

@@ -12,17 +12,35 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "avocare"
+            },
+            {
+              "scheme": "http",
+              "host": "localhost",
+              "port": 8081
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.avocare.app"
+    },
+    "scheme": "avocare",
     "web": {
       "favicon": "./assets/favicon.png"
     }

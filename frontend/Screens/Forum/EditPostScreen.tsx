@@ -222,6 +222,9 @@ const EditPostScreen: React.FC<Props> = ({ navigation, route }) => {
       formData.append('content', content.trim());
       formData.append('category', selectedCategory);
       
+      // Send list of existing images to keep (as JSON string)
+      formData.append('keepImageUrls', JSON.stringify(existingImageUrls));
+      
       // Append new images
       for (const imageUri of imageUris) {
         const imageResponse = await fetch(imageUri);

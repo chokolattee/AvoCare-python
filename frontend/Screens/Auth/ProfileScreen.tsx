@@ -17,8 +17,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Yup from 'yup';
-
-const API_URL = 'http://192.168.0.117:8081/api/users/';
+import { API_BASE_URL } from '../../config/api';
+const API_URL = `${API_BASE_URL}/api/users/`;
 
 interface User {
   id: string;

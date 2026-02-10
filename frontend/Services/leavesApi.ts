@@ -4,9 +4,12 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 export interface LeavesResult {
   success: boolean;
   prediction?: {
+    detections(detections: any): unknown;
     class: string;
     confidence: number;
     all_probabilities: { [key: string]: number };
+    // Mock bounding box: [x, y, width, height] in normalized coordinates (0-1)
+    bbox?: [number, number, number, number];
   };
   error?: string;
 }
@@ -14,10 +17,10 @@ export interface LeavesResult {
 const leavesApi = {
   predictLeaves: async (imageUri: string): Promise<LeavesResult> => {
     try {
-      // Resize image to 512x512 before sending
+      // Resize image to 224x224 before sending (model expects this size)
       const resizedImage = await manipulateAsync(
         imageUri,
-        [{ resize: { width: 512, height: 512 } }],
+        [{ resize: { width: 224, height: 224 } }],
         { compress: 0.8, format: SaveFormat.JPEG }
       );
       
@@ -50,6 +53,7 @@ const leavesApi = {
         };
       }
 
+      // Return result with bbox from model prediction
       return result;
     } catch (error) {
       console.error('Network error:', error);

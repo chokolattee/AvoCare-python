@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { View, StyleSheet, Platform, Modal, ScrollView, Animated, TouchableOpacity, Text, Dimensions } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
 
 const getScreenWidth = () => Dimensions.get('window').width;
 
@@ -15,13 +16,17 @@ import CommunityScreen from '../Screens/Forum/CommunityScreen';
 import MarketScreen from '../Screens/MarketScreen';
 import AuthScreen from '../Screens/Auth/AuthScreen';
 import ProfileScreen from '../Screens/Auth/ProfileScreen';
+import VerifyEmailScreen from '../Screens/Auth/VerifyEmailScreen';
 import ChatbotScreen from '../Screens/Forum/ChatbotScreen';
 import PostDetailScreen from '../Screens/Forum/PostDetailScreen';
 import EditPostScreen from '../Screens/Forum/EditPostScreen';
 import AboutScreen from '../Screens/AboutScreen';
 import AdminNavigator from './AdminNavigator'; 
 
-// Type definitions
+// ==========================================
+// TYPE DEFINITIONS - UPDATED FOR NESTED NAVIGATION
+// ==========================================
+
 export type TabParamList = {
   Home: undefined;
   CommunityStack: undefined;
@@ -36,10 +41,19 @@ export type CommunityStackParamList = {
   EditPost: { postId: string; title: string; content: string; category: string; imageUrl?: string };
 };
 
+// UPDATED: Fixed navigation types
 export type RootStackParamList = {
-  MainTabs: undefined;
+  MainTabs: {
+    screen?: string;
+  } | undefined;
   Notifications: undefined;
-  AuthScreen: undefined;
+  AuthScreen: {
+    emailVerified?: boolean;
+    message?: string;
+  } | undefined;
+  VerifyEmail: { 
+    token: string;
+  };
   Chatbot: undefined;
   About: undefined;
   Admin: undefined;
@@ -87,10 +101,15 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
   }, [visible, screenWidth]);
 
   const handleNavigate = (route: string) => {
-    // Tab screens should always redirect to MainTabs with the correct screen
     const tabScreens = ['Home', 'CommunityStack', 'Scan', 'Market', 'Profile'];
     if (tabScreens.includes(route)) {
-      navigation.navigate('MainTabs', { screen: route });
+      const { CommonActions } = require('@react-navigation/native');
+      navigation.dispatch(
+        CommonActions.navigate({
+          name: 'MainTabs',
+          params: { screen: route },
+        })
+      );
     } else {
       navigation.navigate(route);
     }
@@ -150,7 +169,7 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
   );
 }
 
-// Custom Header - No wrapper View
+// Custom Header
 function CustomHeader({ navigation }: { navigation: any }) {
   const [mobileMenuVisible, setMobileMenuVisible] = useState(false);
   const [screenWidth, setScreenWidth] = useState(getScreenWidth());
@@ -328,11 +347,46 @@ export default function AppNavigator() {
   };
 
   if (!isReady) {
-    return null; // Or a loading screen
+    return null;
   }
 
+  // Deep linking configuration - UPDATED with correct paths
+  const linking = {
+    prefixes: ['avocare://', 'http://localhost:8081', 'https://avocare.app'],
+    config: {
+      screens: {
+        MainTabs: {
+          path: 'main',
+          screens: {
+            Home: 'home',
+            CommunityStack: 'community',
+            Scan: 'scan',
+            Market: 'market',
+            Profile: 'profile',
+          },
+        },
+        VerifyEmail: {
+          path: 'verify-email',
+          parse: {
+            token: (token: string) => token,
+          },
+        },
+        AuthScreen: {
+          path: 'auth',
+          parse: {
+            emailVerified: (emailVerified: string) => emailVerified === 'true',
+            message: (message: string) => message,
+          },
+        },
+        Chatbot: 'chatbot',
+        About: 'about',
+        Admin: 'admin',
+      },
+    },
+  };
+
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       <Stack.Navigator
         initialRouteName={initialRoute}
         screenOptions={{
@@ -345,6 +399,14 @@ export default function AppNavigator() {
           component={AuthScreen}
           options={{
             presentation: 'modal',
+          }}
+        />
+        <Stack.Screen 
+          name="VerifyEmail" 
+          component={VerifyEmailScreen}
+          options={{
+            presentation: 'card',
+            headerShown: false,
           }}
         />
         <Stack.Screen 

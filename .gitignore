@@ -63,10 +63,12 @@ frontend/.env
 frontend/ios/
 frontend/android/
 frontend/config/
-
+frontend/Firebase/firebase.ts
 
 # Backend specific
 backend/data/
+backend/datasets/
+backend/firebase/
 backend/models/train/
 backend/models/*.h5
 backend/models/**/*.h5
@@ -101,3 +103,5 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+
+package.json.MUUESiBpusxT8xYKYuidpJ8_wYP_DiLrvKdzlfJlN-A

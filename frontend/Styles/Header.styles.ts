@@ -1,6 +1,8 @@
-import { StyleSheet, Platform, Dimensions } from 'react-native';
+import { StyleSheet, Platform, Dimensions, ViewStyle, TextStyle, ImageStyle } from 'react-native';
 
 const { width } = Dimensions.get('window');
+
+type Style = ViewStyle | TextStyle | ImageStyle;
 
 export const styles = StyleSheet.create({
   container: {
@@ -8,22 +10,22 @@ export const styles = StyleSheet.create({
     zIndex: 1000,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
-  },
+  } as ViewStyle,
   gradientBackground: {
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
     backgroundColor: '#fff',
-  },
+  } as ViewStyle,
   topHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: width < 375 ? 12 : 20,
     paddingBottom: 16,
-  },
+  } as ViewStyle,
   menuButton: {
     padding: 8,
     marginRight: 8,
-  },
+  } as ViewStyle,
   menuIconContainer: {
     width: 40,
     height: 40,
@@ -31,15 +33,15 @@ export const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     justifyContent: 'center',
     alignItems: 'center',
-  },
+  } as ViewStyle,
   logoContainer: {
     marginRight: 'auto',
-  },
+  } as ViewStyle,
   logoWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
+    columnGap: 12,
+  } as ViewStyle,
   logoIconContainer: {
     width: 44,
     height: 44,
@@ -47,54 +49,52 @@ export const styles = StyleSheet.create({
     backgroundColor: '#f0f7ed',
     justifyContent: 'center',
     alignItems: 'center',
-  },
+  } as ViewStyle,
   avocadoImage: {
     width: 32,
     height: 32,
-    resizeMode: 'contain',
-  },
+  } as ImageStyle,
   logoTextContainer: {
     justifyContent: 'center',
-  },
+  } as ViewStyle,
   logoText: {
     fontSize: width < 375 ? 18 : 22,
     fontWeight: '800',
     color: '#5d873e',
     letterSpacing: 0.5,
-  },
+  } as TextStyle,
   logoSubtext: {
     fontSize: 10,
     color: '#7ba05b',
     fontWeight: '500',
     letterSpacing: 0.5,
-  },
+  } as TextStyle,
   navLinks: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    columnGap: 8,
     marginHorizontal: 24,
     position: 'absolute',
     left: '50%',
     transform: [{ translateX: -150 }],
     zIndex: 10,
-  },
+  } as ViewStyle,
   navLink: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 6,
-    cursor: 'pointer',
-  },
+  } as ViewStyle,
   navLinkText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#5d873e',
     letterSpacing: 0.5,
-  },
+  } as TextStyle,
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     marginLeft: 'auto',
-  },
+  } as ViewStyle,
   loginButton: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -103,37 +103,37 @@ export const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
-  },
+  } as ViewStyle,
   loginButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: width < 375 ? 16 : 20,
     paddingVertical: 10,
-    gap: 8,
-  },
+    columnGap: 8,
+  } as ViewStyle,
   loginButtonText: {
     color: '#fff',
     fontSize: width < 375 ? 13 : 14,
     fontWeight: '700',
     letterSpacing: 0.5,
-  },
+  } as TextStyle,
   userMenu: {
     position: 'relative',
     zIndex: 1001,
-  },
+  } as ViewStyle,
   userButton: {
     padding: 4,
-  },
+  } as ViewStyle,
   userAvatarContainer: {
     position: 'relative',
-  },
+  } as ViewStyle,
   userImage: {
     width: 40,
     height: 40,
     borderRadius: 20,
     borderWidth: 2,
     borderColor: '#fff',
-  },
+  } as ImageStyle,
   defaultAvatar: {
     width: 40,
     height: 40,
@@ -143,12 +143,12 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#e8ffd7',
-  },
+  } as ViewStyle,
   avatarText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#5d873e',
-  },
+  } as TextStyle,
   statusDot: {
     position: 'absolute',
     bottom: 0,
@@ -159,7 +159,7 @@ export const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
     borderWidth: 2,
     borderColor: '#fff',
-  },
+  } as ViewStyle,
   dropdownMenu: {
     position: 'absolute',
     top: 55,
@@ -176,22 +176,22 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e8f5e0',
     overflow: 'hidden',
-  },
+  } as ViewStyle,
   dropdownHeader: {
     padding: 20,
     backgroundColor: '#f8fdf5',
     alignItems: 'center',
-  },
+  } as ViewStyle,
   dropdownAvatarContainer: {
     marginBottom: 12,
-  },
+  } as ViewStyle,
   dropdownAvatar: {
     width: 64,
     height: 64,
     borderRadius: 32,
     borderWidth: 3,
     borderColor: '#5d873e',
-  },
+  } as ImageStyle,
   dropdownDefaultAvatar: {
     width: 64,
     height: 64,
@@ -201,28 +201,28 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 3,
     borderColor: '#8BC34A',
-  },
+  } as ViewStyle,
   dropdownAvatarText: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
-  },
+  } as TextStyle,
   userName: {
     fontSize: 18,
     fontWeight: '700',
     color: '#2d5a3d',
     marginBottom: 4,
-  },
+  } as TextStyle,
   userEmail: {
     fontSize: 13,
     color: '#666',
-  },
+  } as TextStyle,
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    gap: 12,
-  },
+    columnGap: 12,
+  } as ViewStyle,
   dropdownIconContainer: {
     width: 36,
     height: 36,
@@ -230,24 +230,24 @@ export const styles = StyleSheet.create({
     backgroundColor: '#f0f7ed',
     justifyContent: 'center',
     alignItems: 'center',
-  },
+  } as ViewStyle,
   dropdownText: {
     flex: 1,
     fontSize: 15,
     fontWeight: '500',
     color: '#2d5a3d',
-  },
+  } as TextStyle,
   dropdownDivider: {
     height: 1,
     backgroundColor: '#e8f5e0',
-  },
+  } as ViewStyle,
   logoutItem: {
     backgroundColor: '#fff5f5',
-  },
+  } as ViewStyle,
   logoutIconContainer: {
     backgroundColor: '#ffe8e8',
-  },
+  } as ViewStyle,
   logoutText: {
     color: '#e74c3c',
-  },
+  } as TextStyle,
 });
