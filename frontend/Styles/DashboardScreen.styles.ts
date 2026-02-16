@@ -9,6 +9,16 @@ export const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#6b7280',
+  },
 
   // Header
   header: {
@@ -136,9 +146,15 @@ export const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
+    // Prevent content from overflowing the card
+    overflow: 'hidden',
+  },
+  // Tablet: two charts side by side
+  chartCardHalf: {
+    width: '48%',
   },
   chartHeader: {
-    marginBottom: 16,
+    marginBottom: 8,
   },
   chartTitle: {
     fontSize: 18,
@@ -153,6 +169,30 @@ export const styles = StyleSheet.create({
   chart: {
     marginVertical: 8,
     borderRadius: 12,
+  },
+
+  // Legend
+  legendRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '500',
   },
 
   // Activity Card

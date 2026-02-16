@@ -281,6 +281,15 @@ const ProfileScreen: React.FC = () => {
             <Ionicons name="chevron-forward" size={24} color="#999" />
           </TouchableOpacity>
 
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => navigation.navigate('History' as never)}
+          >
+            <Ionicons name="time-outline" size={24} color="#3d4d3d" />
+            <Text style={styles.menuText}>History</Text>
+            <Ionicons name="chevron-forward" size={24} color="#999" />
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.menuItem}>
             <Ionicons name="settings-outline" size={24} color="#3d4d3d" />
             <Text style={styles.menuText}>Settings</Text>

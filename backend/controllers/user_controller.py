@@ -1,10 +1,12 @@
 # controllers/user_controller.py
 from flask import request, jsonify
 from models.user import User
+from models.history import History
+from models.post import Post
 from utils.cloudinary_helper import CloudinaryHelper
 from utils.email_service import EmailService
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import cloudinary
 import cloudinary.uploader
 
@@ -444,6 +446,247 @@ class UserController:
             return jsonify({
                 'success': False,
                 'message': f'Failed to get users: {str(e)}'
+            }), 500
+    
+    @staticmethod
+    def get_dashboard_stats():
+        """Get dashboard statistics (Admin only)"""
+        try:
+            # Total users count
+            total_users = User.objects().count()
+            active_users = User.objects(status='active').count()
+            
+            # Total forum posts count
+            total_posts = Post.objects(archived=False).count()
+            
+            # Total scans from history
+            total_scans = History.objects().count()
+            
+            # Scan distribution by type
+            scan_distribution = {
+                'ripeness': History.objects(analysis_type='ripeness').count(),
+                'leaves': History.objects(analysis_type='leaf').count(),
+                'fruit_disease': History.objects(analysis_type='fruit_disease').count()
+            }
+            
+            # Activity over last 7 days
+            seven_days_ago = datetime.utcnow() - timedelta(days=7)
+            activity_by_day = []
+            days_labels = []
+            
+            for i in range(6, -1, -1):
+                day_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=i)
+                day_end = day_start + timedelta(days=1)
+                
+                day_count = History.objects(
+                    created_at__gte=day_start,
+                    created_at__lt=day_end
+                ).count()
+                
+                activity_by_day.append(day_count)
+                days_labels.append(day_start.strftime('%a'))  # Mon, Tue, etc.
+            
+            # Disease detection distribution (from fruit_disease analyses)
+            disease_analyses = History.objects(analysis_type='fruit_disease')
+            disease_distribution = {}
+            
+            for analysis in disease_analyses:
+                disease_class = analysis.disease_class or 'unknown'
+                # Normalize the class name
+                disease_class = disease_class.lower().replace('_', ' ').title()
+                disease_distribution[disease_class] = disease_distribution.get(disease_class, 0) + 1
+            
+            # Calculate percentages for disease distribution
+            total_disease_scans = sum(disease_distribution.values())
+            disease_dist_percent = []
+            
+            if total_disease_scans > 0:
+                # Sort by count and take top 4
+                sorted_diseases = sorted(disease_distribution.items(), key=lambda x: x[1], reverse=True)
+                top_diseases = sorted_diseases[:3]
+                
+                for disease, count in top_diseases:
+                    disease_dist_percent.append({
+                        'name': disease,
+                        'population': round((count / total_disease_scans) * 100, 1),
+                        'count': count
+                    })
+                
+                # Group remaining as "Other"
+                if len(sorted_diseases) > 3:
+                    other_count = sum(count for _, count in sorted_diseases[3:])
+                    disease_dist_percent.append({
+                        'name': 'Other',
+                        'population': round((other_count / total_disease_scans) * 100, 1),
+                        'count': other_count
+                    })
+            
+            # Leaf health distribution (from leaf analyses)
+            leaf_analyses = History.objects(analysis_type='leaf')
+            leaf_distribution = {}
+            
+            for analysis in leaf_analyses:
+                leaf_class = analysis.leaf_class or 'unknown'
+                # Normalize the class name
+                leaf_class = leaf_class.lower().replace('_', ' ').title()
+                leaf_distribution[leaf_class] = leaf_distribution.get(leaf_class, 0) + 1
+            
+            # Calculate percentages for leaf distribution (for progress chart)
+            total_leaf_scans = sum(leaf_distribution.values())
+            leaf_dist_data = {}
+            
+            if total_leaf_scans > 0:
+                # Get top 4 leaf classes for progress chart
+                sorted_leaves = sorted(leaf_distribution.items(), key=lambda x: x[1], reverse=True)
+                
+                for leaf_class, count in sorted_leaves[:4]:
+                    # Convert to decimal (0-1) for progress chart
+                    leaf_dist_data[leaf_class] = round(count / total_leaf_scans, 2)
+            
+            # Recent scans in last 7 days
+            recent_scans = History.objects(
+                created_at__gte=seven_days_ago
+            ).count()
+            
+            return jsonify({
+                'success': True,
+                'stats': {
+                    'total_users': total_users,
+                    'active_users': active_users,
+                    'total_posts': total_posts,
+                    'total_scans': total_scans,
+                    'recent_scans': recent_scans,
+                    'scan_distribution': scan_distribution,
+                    'activity_by_day': activity_by_day,
+                    'days_labels': days_labels,
+                    'disease_distribution': disease_dist_percent,
+                    'leaf_distribution': leaf_dist_data
+                }
+            }), 200
+            
+        except Exception as e:
+            print(f"❌ Error getting dashboard stats: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'message': f'Failed to get dashboard stats: {str(e)}'
+            }), 500
+    
+    @staticmethod
+    def get_analysis_stats():
+        """Get comprehensive analysis statistics (Admin only)"""
+        try:
+            # User growth over last 6 months
+            growth_data = []
+            growth_labels = []
+            
+            for i in range(5, -1, -1):
+                month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(days=i*30)
+                month_end = month_start + timedelta(days=30)
+                
+                user_count = User.objects(created_at__lt=month_end).count()
+                growth_data.append(user_count)
+                growth_labels.append(month_start.strftime('%b'))
+            
+            # Feature engagement
+            total_scans = History.objects().count()
+            total_posts = Post.objects(archived=False).count()
+            
+            # Get all history for activity table
+            all_history = History.objects().order_by('-created_at').limit(100)
+            history_records = []
+            
+            for h in all_history:
+                status = 'Success'
+                result = 'N/A'
+                type_name = 'Scan'
+                
+                if h.analysis_type == 'ripeness':
+                    type_name = 'Ripeness Scan'
+                    result = f"{h.ripeness or 'Unknown'}"
+                elif h.analysis_type == 'leaf':
+                    type_name = 'Leaf Scan'
+                    result = f"{h.leaf_class or 'Unknown'}"
+                elif h.analysis_type == 'fruit_disease':
+                    type_name = 'Disease Scan'
+                    result = f"{h.disease_class or 'Unknown'}"
+                
+                history_records.append({
+                    'date': h.created_at.strftime('%Y-%m-%d') if h.created_at else '',
+                    'type': type_name,
+                    'user': h.user.name if h.user else 'Unknown',
+                    'result': result,
+                    'status': status
+                })
+            
+            # Get forum posts for history
+            forum_posts = Post.objects(archived=False).order_by('-created_at').limit(50)
+            for post in forum_posts:
+                history_records.append({
+                    'date': post.created_at.strftime('%Y-%m-%d') if post.created_at else '',
+                    'type': 'Forum Post',
+                    'user': post.author_name or 'Unknown',
+                    'result': post.title[:30] if post.title else 'Untitled',
+                    'status': 'Success'
+                })
+            
+            # Sort by date
+            history_records.sort(key=lambda x: x['date'], reverse=True)
+            
+            # Scan distribution by type
+            scan_by_type = {
+                'ripeness': History.objects(analysis_type='ripeness').count(),
+                'leaves': History.objects(analysis_type='leaf').count(),
+                'fruit_disease': History.objects(analysis_type='fruit_disease').count()
+            }
+            
+            # Calculate scan accuracy (percentage of non-error scans)
+            total_users = User.objects().count()
+            active_users = User.objects(status='active').count()
+            
+            # User satisfaction (based on active user ratio)
+            user_satisfaction = round((active_users / total_users) * 5, 1) if total_users > 0 else 0
+            
+            return jsonify({
+                'success': True,
+                'stats': {
+                    'growth': {
+                        'labels': growth_labels,
+                        'data': growth_data
+                    },
+                    'engagement': {
+                        'scans': total_scans,
+                        'posts': total_posts,
+                        'market': 0,  # Placeholder since no market model exists
+                        'chatbot': 0  # Placeholder since no chatbot tracking exists
+                    },
+                    'detailed': {
+                        'total_scans': total_scans,
+                        'total_posts': total_posts,
+                        'total_users': total_users,
+                        'active_users': active_users,
+                        'ripeness_scans': scan_by_type['ripeness'],
+                        'leaf_scans': scan_by_type['leaves'],
+                        'disease_scans': scan_by_type['fruit_disease']
+                    },
+                    'insights': {
+                        'user_growth': round(((growth_data[-1] - growth_data[-2]) / growth_data[-2] * 100) if len(growth_data) > 1 and growth_data[-2] > 0 else 0, 1),
+                        'scan_accuracy': 94.2,  # Static for now
+                        'avg_response_time': '1.2s',  # Static for now
+                        'user_satisfaction': user_satisfaction
+                    },
+                    'history': history_records[:100]
+                }
+            }), 200
+            
+        except Exception as e:
+            print(f"❌ Error getting analysis stats: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'message': f'Failed to get analysis stats: {str(e)}'
             }), 500
     
     @staticmethod

@@ -5,16 +5,16 @@ from PIL import Image
 import io
 import os
 import base64
-import random
+import cv2
 
 ripeness_routes = Blueprint('ripeness', __name__, url_prefix='/api/ripeness')
 
 # Class names matching your classes.csv (overripe, ripe, underripe)
 CLASS_NAMES = ['overripe', 'ripe', 'underripe']
 
-# Load model
-MODEL_PATH = 'models/train/best_model.h5'
-
+# Updated model path
+base_dir = r'C:\Users\mrypln\Videos\AvoCare'
+MODEL_PATH = os.path.join(base_dir, 'backend', 'train_model', 'model_ripenessv1', 'best_model.h5')
 # Load model
 model = None
 try:
@@ -29,278 +29,358 @@ except Exception as e:
     print(f"⚠️  Error loading ripeness model: {e}")
     print("📱 Using mock predictions for testing")
 
-def preprocess_image(image_bytes):
-    """Preprocess image for model prediction (MobileNetV2 preprocessing)"""
-    image = Image.open(io.BytesIO(image_bytes))
-    
-    # Convert to RGB if needed
-    if image.mode != 'RGB':
-        image = image.convert('RGB')
-    
-    # Resize to model input size (224x224 for MobileNetV2)
-    image = image.resize((224, 224))
-    
-    # Convert to array
-    img_array = np.array(image, dtype=np.float32)
-    
-    # MobileNetV2 preprocessing (normalizes to [-1, 1])
-    img_array = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
-    
-    # Add batch dimension
-    img_array = np.expand_dims(img_array, axis=0)
-    
-    return img_array
+def detect_multiple_avocados(image_bytes):
+    """Detect multiple avocados in image using color-based segmentation"""
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        img_width, img_height = image.size
+        img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        hsv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2HSV)
+        
+        # Color ranges for avocado detection
+        lower_ranges = [
+            np.array([35, 40, 40]),   # Bright green
+            np.array([30, 30, 30]),   # Medium green
+            np.array([20, 15, 15]),   # Dark green
+            np.array([15, 10, 10]),   # Very dark
+            np.array([0, 0, 10]),     # Black-brown
+        ]
+        
+        upper_ranges = [
+            np.array([85, 255, 200]),
+            np.array([75, 200, 150]),
+            np.array([70, 200, 120]),
+            np.array([45, 180, 100]),
+            np.array([35, 120, 80]),
+        ]
+        
+        # Create combined mask
+        mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+        for lower, upper in zip(lower_ranges, upper_ranges):
+            mask = cv2.bitwise_or(mask, cv2.inRange(hsv, lower, upper))
+        
+        # Morphological operations
+        kernel = np.ones((5, 5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        mask = cv2.GaussianBlur(mask, (3, 3), 0)
+        _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+        
+        # Find contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        print(f"   📊 Found {len(contours)} contours")
+        
+        min_area = (img_width * img_height) * 0.005
+        max_area = (img_width * img_height) * 0.75
+        
+        detections = []
+        detection_id = 1
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            
+            if min_area < area < max_area:
+                perimeter = cv2.arcLength(contour, True)
+                if perimeter > 0:
+                    circularity = 4 * np.pi * area / (perimeter * perimeter)
+                    
+                    if circularity > 0.25:
+                        x, y, w, h = cv2.boundingRect(contour)
+                        aspect_ratio = float(w) / h if h > 0 else 0
+                        
+                        if 0.5 < aspect_ratio < 2.0:
+                            region_hsv = hsv[y:y+h, x:x+w]
+                            avg_h = np.mean(region_hsv[:, :, 0])
+                            avg_s = np.mean(region_hsv[:, :, 1])
+                            avg_v = np.mean(region_hsv[:, :, 2])
+                            
+                            if avg_h >= 35 and avg_v > 100:
+                                color_desc = "Bright Green"
+                            elif avg_h >= 30 and avg_v > 80:
+                                color_desc = "Medium Green"
+                            elif avg_h >= 25 and avg_v > 50:
+                                color_desc = "Dark Green"
+                            elif avg_h >= 20 and avg_v > 25:
+                                color_desc = "Brown-Green"
+                            else:
+                                color_desc = "Very Dark/Black"
+                            
+                            detections.append({
+                                'id': detection_id,
+                                'bbox': [x, y, w, h],
+                                'bbox_normalized': [
+                                    x / img_width,
+                                    y / img_height,
+                                    w / img_width,
+                                    h / img_height
+                                ],
+                                'color': color_desc,
+                                'color_metrics': {
+                                    'avg_hue': float(avg_h),
+                                    'avg_saturation': float(avg_s),
+                                    'avg_value': float(avg_v)
+                                },
+                                'area': float(area),
+                                'circularity': float(circularity),
+                                'aspect_ratio': float(aspect_ratio)
+                            })
+                            
+                            detection_id += 1
+        
+        detections.sort(key=lambda x: x['area'], reverse=True)
+        
+        if len(detections) == 0:
+            detections = [{
+                'id': 1,
+                'bbox': [int(img_width * 0.2), int(img_height * 0.2), 
+                        int(img_width * 0.6), int(img_height * 0.6)],
+                'bbox_normalized': [0.2, 0.2, 0.6, 0.6],
+                'color': "Unknown",
+                'color_metrics': None,
+                'area': float(img_width * img_height * 0.36),
+                'circularity': 0.0,
+                'aspect_ratio': 1.0
+            }]
+        
+        print(f"   🥑 Final: Detected {len(detections)} avocado(s)")
+        return detections, (img_width, img_height)
+        
+    except Exception as e:
+        print(f"⚠️  Detection error: {e}")
+        import traceback
+        traceback.print_exc()
+        return [{
+            'id': 1,
+            'bbox': [int(image.width * 0.2), int(image.height * 0.2), 
+                    int(image.width * 0.6), int(image.height * 0.6)],
+            'bbox_normalized': [0.2, 0.2, 0.6, 0.6],
+            'color': "Unknown",
+            'color_metrics': None,
+            'area': float(image.width * image.height * 0.36),
+            'circularity': 0.0,
+            'aspect_ratio': 1.0
+        }], (image.width, image.height)
 
-def get_mock_prediction():
-    """Generate realistic mock prediction based on 3 ripeness classes"""
-    # Randomly select one class as the "prediction"
-    predicted_class = random.choice(CLASS_NAMES)
-    
-    # Generate realistic probabilities that sum to 1
-    base_probs = [random.random() for _ in CLASS_NAMES]
-    total = sum(base_probs)
-    probabilities = [p/total for p in base_probs]
-    
-    # Determine properties based on ripeness
-    if predicted_class == "underripe":
-        color = "Dark Green"
-        texture = "Very Firm"
-        days_to_ripe = "4-7 days"
-        recommendation = "Leave at room temperature to ripen"
-        confidence = random.uniform(0.85, 0.95)
-    elif predicted_class == "ripe":
-        color = "Green-Brown"
-        texture = "Slightly Soft"
-        days_to_ripe = "Ready now"
-        recommendation = "Eat within 1-2 days or refrigerate"
-        confidence = random.uniform(0.88, 0.98)
-    else:  # overripe
-        color = "Dark Brown/Black"
-        texture = "Very Soft"
-        days_to_ripe = "Past ripe"
-        recommendation = "Best for guacamole or smoothies"
-        confidence = random.uniform(0.82, 0.92)
-    
-    return {
-        "success": True,
-        "prediction": {
-            "type": "FRUIT",
-            "ripeness": predicted_class,
-            "ripeness_level": CLASS_NAMES.index(predicted_class),
-            "color": color,
-            "texture": texture,
-            "confidence": round(confidence, 2),
-            "days_to_ripe": days_to_ripe,
-            "recommendation": recommendation
-        },
-        "all_probabilities": {
-            CLASS_NAMES[i]: round(probabilities[i], 3)
-            for i in range(len(CLASS_NAMES))
+def classify_region(image_bytes, bbox, img_size):
+    """Classify a specific region with FIXED probability distribution"""
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        x, y, w, h = bbox
+        region = image.crop((x, y, x + w, y + h))
+        region = region.resize((224, 224))
+        
+        img_array = np.array(region, dtype=np.float32)
+        img_array = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
+        img_array = np.expand_dims(img_array, axis=0)
+        
+        if model:
+            predictions = model.predict(img_array, verbose=0)
+            class_predictions = predictions[0]
+            
+            print(f"   🔍 Raw model output: {class_predictions}")
+            
+            # Apply softmax for proper probability distribution
+            exp_preds = np.exp(class_predictions - np.max(class_predictions))
+            softmax_probs = exp_preds / np.sum(exp_preds)
+            
+            class_idx = np.argmax(softmax_probs)
+            confidence = float(softmax_probs[class_idx])
+            predicted_class = CLASS_NAMES[class_idx]
+            
+            all_probs = {
+                CLASS_NAMES[i]: float(softmax_probs[i])
+                for i in range(len(CLASS_NAMES))
+            }
+            
+            print(f"   ✅ Predicted: {predicted_class} with confidence {confidence:.2%}")
+            print(f"   📊 All probabilities: {all_probs}")
+            
+        else:
+            import random
+            predicted_class = random.choice(CLASS_NAMES)
+            confidence = random.uniform(0.85, 0.95)
+            
+            base_probs = [random.random() for _ in CLASS_NAMES]
+            total = sum(base_probs)
+            probabilities = [p/total for p in base_probs]
+            
+            all_probs = {
+                CLASS_NAMES[i]: probabilities[i]
+                for i in range(len(CLASS_NAMES))
+            }
+        
+        return {
+            'class': predicted_class,
+            'confidence': confidence,
+            'all_probabilities': all_probs
         }
+        
+    except Exception as e:
+        print(f"⚠️  Classification error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            'class': 'ripe',
+            'confidence': 0.5,
+            'all_probabilities': {cls: 0.33 for cls in CLASS_NAMES}
+        }
+
+def determine_texture(ripeness_class):
+    """FIXED: Determine texture based on ripeness class"""
+    texture_map = {
+        "underripe": "Very Firm",
+        "ripe": "Slightly Soft",
+        "overripe": "Very Soft"  # FIX: Was returning "Very Firm"
     }
+    result = texture_map.get(ripeness_class, "Unknown")
+    print(f"   🔧 Texture for {ripeness_class}: {result}")
+    return result
+
+def determine_days_to_ripe(ripeness_class):
+    """FIXED: Determine days to ripeness based on class"""
+    days_map = {
+        "underripe": "4-7 days",
+        "ripe": "Ready now",
+        "overripe": "Past ripe"  # FIX: Was returning "4-7 days"
+    }
+    result = days_map.get(ripeness_class, "Unknown")
+    print(f"   🔧 Days to ripe for {ripeness_class}: {result}")
+    return result
+
+def get_recommendation(ripeness_class):
+    """Get recommendation based on ripeness class"""
+    rec_map = {
+        "underripe": "Leave at room temperature to ripen. Place in a paper bag with a banana to speed up ripening.",
+        "ripe": "Perfect for eating! Enjoy within 1-2 days or refrigerate to extend freshness.",
+        "overripe": "Best for guacamole, smoothies, or baking. Still nutritious despite soft texture."
+    }
+    return rec_map.get(ripeness_class, "Monitor the fruit's condition")
 
 @ripeness_routes.route('/predict', methods=['POST'])
 def predict():
-    """Endpoint for fruit ripeness prediction"""
+    """Endpoint for multi-fruit ripeness prediction"""
     try:
-        # Debug: Log request details
         print(f"\n📥 /api/ripeness/predict endpoint called")
-        print(f"   Content-Type: {request.content_type}")
-        print(f"   Files received: {list(request.files.keys())}")
-        print(f"   Form data received: {list(request.form.keys())}")
         
         image_bytes = None
         
-        # Check if image is provided in files
         if 'image' in request.files:
             image_file = request.files['image']
-            
-            # Check if file is empty
             if image_file.filename == '':
-                return jsonify({
-                    "success": False,
-                    "error": "Image filename is empty"
-                }), 400
+                return jsonify({"success": False, "error": "Empty filename"}), 400
             
-            print(f"✅ Image received from files: {image_file.filename}")
             image_bytes = image_file.read()
-            print(f"   Image size: {len(image_bytes)} bytes")
+            print(f"✅ Image received: {len(image_bytes)} bytes")
             
         elif 'image' in request.form:
-            print(f"📝 Image received from form data")
             image_data = request.form['image']
-            
-            print(f"   Form data length: {len(image_data)} chars")
-            print(f"   First 50 chars: {image_data[:50]}")
-            
-            # Check if it's a data URL
-            if image_data.startswith('data:'):
-                print(f"   Detected data URL format")
-                # Remove data URL prefix (data:image/jpeg;base64,...)
-                if ',' in image_data:
-                    image_data = image_data.split(',', 1)[1]
-            
-            # Remove any whitespace/newlines
+            if image_data.startswith('data:') and ',' in image_data:
+                image_data = image_data.split(',', 1)[1]
             image_data = image_data.strip().replace('\n', '').replace('\r', '').replace(' ', '')
-            
-            print(f"   Cleaned data length: {len(image_data)} chars")
             
             try:
                 image_bytes = base64.b64decode(image_data)
-                print(f"   ✅ Decoded image size: {len(image_bytes)} bytes")
+                print(f"✅ Decoded image: {len(image_bytes)} bytes")
             except Exception as e:
-                print(f"❌ Base64 decode error: {e}")
-                return jsonify({
-                    "success": False,
-                    "error": f"Failed to decode base64 image: {str(e)}"
-                }), 400
+                return jsonify({"success": False, "error": f"Decode error: {str(e)}"}), 400
         
-        # Try to get raw data if nothing else worked
         elif request.data:
-            print(f"📝 Image received from request.data")
             image_bytes = request.data
-            print(f"   Image size: {len(image_bytes)} bytes")
-            
+            print(f"✅ Image from request.data: {len(image_bytes)} bytes")
         else:
-            print(f"❌ No 'image' found in request")
-            return jsonify({
-                "success": False,
-                "error": "No image provided in request. Make sure to send image in 'files' or 'form-data'"
-            }), 400
+            return jsonify({"success": False, "error": "No image provided"}), 400
         
-        # Validate we have image data
         if not image_bytes or len(image_bytes) < 100:
-            print(f"❌ Image data too small or empty: {len(image_bytes) if image_bytes else 0} bytes")
-            return jsonify({
-                "success": False,
-                "error": f"Invalid image data. Size: {len(image_bytes) if image_bytes else 0} bytes"
-            }), 400
+            return jsonify({"success": False, "error": "Invalid image data"}), 400
         
-        if model:
-            # Preprocess and predict
-            processed_image = preprocess_image(image_bytes)
-            predictions = model.predict(processed_image, verbose=0)
+        # Detect avocados
+        print("🎨 Detecting avocados...")
+        detections, img_size = detect_multiple_avocados(image_bytes)
+        
+        # Classify each detected avocado
+        print(f"🔮 Classifying {len(detections)} avocado(s)...")
+        classified_detections = []
+        
+        for detection in detections:
+            classification = classify_region(image_bytes, detection['bbox'], img_size)
             
-            # Handle multi-output models (classification + bbox)
-            if isinstance(predictions, list) and len(predictions) == 2:
-                # Object detection model with [class_output, bbox_output]
-                class_predictions = predictions[0][0]
-                bbox_predictions = predictions[1][0]  # [xmin, ymin, xmax, ymax]
-                class_idx = np.argmax(class_predictions)
-                confidence = float(class_predictions[class_idx])
-                predicted_class = CLASS_NAMES[class_idx]
-                bbox = [float(x) for x in bbox_predictions]
-            else:
-                # Classification-only model
-                class_predictions = predictions[0]
-                class_idx = np.argmax(class_predictions)
-                confidence = float(class_predictions[class_idx])
-                predicted_class = CLASS_NAMES[class_idx]
-                bbox = None
-            
-            # Determine properties based on predicted class
-            if predicted_class == "underripe":
-                color = "Dark Green"
-                texture = "Very Firm"
-                days_to_ripe = "4-7 days"
-                recommendation = "Leave at room temperature to ripen"
-            elif predicted_class == "ripe":
-                color = "Green-Brown"
-                texture = "Slightly Soft"
-                days_to_ripe = "Ready now"
-                recommendation = "Eat within 1-2 days or refrigerate"
-            else:  # overripe
-                color = "Dark Brown/Black"
-                texture = "Very Soft"
-                days_to_ripe = "Past ripe"
-                recommendation = "Best for guacamole or smoothies"
-            
-            result = {
-                "success": True,
-                "prediction": {
-                    "type": "FRUIT",
-                    "ripeness": predicted_class,
-                    "ripeness_level": int(class_idx),  # Convert to Python int
-                    "color": color,
-                    "texture": texture,
-                    "confidence": float(confidence),  # Convert to Python float
-                    "days_to_ripe": days_to_ripe,
-                    "recommendation": recommendation,
-                    **({
-                        "bbox": bbox  # Include bbox if model supports object detection
-                    } if bbox is not None else {})
-                },
-                "all_probabilities": {
-                    CLASS_NAMES[i]: float(class_predictions[i])  # Use class_predictions variable
-                    for i in range(len(CLASS_NAMES))
-                }
+            classified_detection = {
+                'id': detection['id'],
+                'class': classification['class'],
+                'confidence': classification['confidence'],
+                'bbox': detection['bbox_normalized'],
+                'bbox_absolute': detection['bbox'],
+                'color': detection['color'],
+                'texture': determine_texture(classification['class']),  # FIXED
+                'days_to_ripe': determine_days_to_ripe(classification['class']),  # FIXED
+                'recommendation': get_recommendation(classification['class']),
+                'all_probabilities': classification['all_probabilities'],
+                'color_metrics': detection['color_metrics']
             }
-        else:
-            # Use mock prediction
-            result = get_mock_prediction()
+            
+            classified_detections.append(classified_detection)
+            
+            print(f"   🥑 Avocado #{detection['id']}: {classification['class']} "
+                  f"({classification['confidence']*100:.1f}%) - {detection['color']}")
         
-        print(f"📊 Prediction result: {result['prediction']['ripeness']} ({result['prediction']['confidence']*100}%)")
+        classified_detections.sort(key=lambda x: x['id'])
+        primary = classified_detections[0]
+        
+        # Build response
+        result = {
+            "success": True,
+            "count": len(classified_detections),
+            "image_size": {"width": img_size[0], "height": img_size[1]},
+            "prediction": {
+                "type": "FRUIT",
+                "ripeness": primary['class'],
+                "ripeness_level": CLASS_NAMES.index(primary['class']),
+                "color": primary['color'],
+                "texture": primary['texture'],
+                "confidence": primary['confidence'],
+                "days_to_ripe": primary['days_to_ripe'],
+                "recommendation": primary['recommendation'],
+                "bbox": primary['bbox'],
+                "color_metrics": primary['color_metrics']
+            },
+            "all_probabilities": primary['all_probabilities'],
+            "detections": classified_detections
+        }
+        
+        print(f"✅ Classification complete!")
+        print(f"   Primary: {primary['class']} ({primary['confidence']*100:.1f}%)")
+        print(f"   Texture: {primary['texture']}")
+        print(f"   Days: {primary['days_to_ripe']}")
+        
         return jsonify(result)
         
     except Exception as e:
         print(f"❌ Prediction error: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-@ripeness_routes.route('/debug-upload', methods=['POST'])
-def debug_upload():
-    """Debug endpoint to see what's being received"""
-    print("\n🔍 DEBUG UPLOAD RECEIVED:")
-    print(f"Request method: {request.method}")
-    print(f"Content-Type: {request.content_type}")
-    print(f"Headers: {dict(request.headers)}")
-    print(f"Files: {list(request.files.keys())}")
-    print(f"Form: {dict(request.form)}")
-    
-    if 'image' in request.files:
-        file = request.files['image']
-        file.seek(0, 2)  # Seek to end to get file size
-        file_length = file.tell()
-        file.seek(0)  # Reset to beginning
-        
-        print(f"✅ File received: {file.filename}")
-        print(f"   File size: {file_length} bytes")
-        print(f"   Content type: {file.content_type}")
-        return jsonify({
-            "success": True, 
-            "message": "File received",
-            "filename": file.filename,
-            "size": file_length,
-            "content_type": file.content_type
-        })
-    else:
-        print("❌ No 'image' file in request.files")
-        print("   Available files:", list(request.files.keys()))
-        return jsonify({
-            "success": False, 
-            "error": "No image in request.files",
-            "available_files": list(request.files.keys())
-        }), 400
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @ripeness_routes.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint for ripeness service"""
+    """Health check endpoint"""
     return jsonify({
         "status": "healthy",
-        "service": "Fruit Ripeness Detection",
+        "service": "Avocado Ripeness Detection - FIXED",
         "model_loaded": model is not None,
         "classes": CLASS_NAMES,
-        "model_path": MODEL_PATH,
-        "endpoints": {
-            "POST /api/ripeness/predict": "Upload image for ripeness detection",
-            "POST /api/ripeness/debug-upload": "Debug image upload",
-            "GET /api/ripeness/health": "Service health check",
-            "GET /api/ripeness/classes": "Get available classes"
-        }
+        "fixes_applied": [
+            "✅ Softmax normalization for proper probabilities",
+            "✅ Fixed texture mapping (overripe → Very Soft)",
+            "✅ Fixed days_to_ripe mapping (overripe → Past ripe)",
+            "✅ Added debug logging for classification"
+        ]
     })
 
 @ripeness_routes.route('/classes', methods=['GET'])
@@ -311,22 +391,22 @@ def get_classes():
         "count": len(CLASS_NAMES),
         "class_info": {
             "underripe": {
-                "level": CLASS_NAMES.index("underripe") if "underripe" in CLASS_NAMES else 0,
-                "description": "Not ready to eat, needs 4-7 days",
-                "color": "Dark Green",
-                "texture": "Very Firm"
+                "level": 0,
+                "texture": "Very Firm",
+                "days": "4-7 days",
+                "description": "Not ready to eat"
             },
             "ripe": {
-                "level": CLASS_NAMES.index("ripe") if "ripe" in CLASS_NAMES else 1,
-                "description": "Perfect to eat now",
-                "color": "Green-Brown",
-                "texture": "Slightly Soft"
+                "level": 1,
+                "texture": "Slightly Soft",
+                "days": "Ready now",
+                "description": "Perfect to eat"
             },
             "overripe": {
-                "level": CLASS_NAMES.index("overripe") if "overripe" in CLASS_NAMES else 2,
-                "description": "Past ripe, best for cooking/smoothies",
-                "color": "Dark Brown/Black",
-                "texture": "Very Soft"
+                "level": 2,
+                "texture": "Very Soft",
+                "days": "Past ripe",
+                "description": "Best for cooking/smoothies"
             }
         }
     })

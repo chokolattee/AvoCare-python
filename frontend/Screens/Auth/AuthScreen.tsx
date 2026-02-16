@@ -121,11 +121,6 @@ const AuthScreen: React.FC = () => {
       email: userData.email,
       role: userData.role
     });
-
-    // Dispatch event to notify Header and other components
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('authChange'));
-    }
   };
 
   // Navigate after login helper - FIXED to use proper nested navigation

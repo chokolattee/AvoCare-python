@@ -65,14 +65,17 @@ def create_app():
     from routes.leaves_routes import leaves_routes
     from routes.ripeness_routes import ripeness_routes
     from routes.chatbot_routes import chatbot_routes
-    from routes.forum_routes import forum_routes    
+    from routes.forum_routes import forum_routes 
+    from routes.fruitdisease_routes import fruitdisease_routes   
+    from routes.history_routes import history_routes
     
     app.register_blueprint(user_routes)
     app.register_blueprint(leaves_routes)
     app.register_blueprint(ripeness_routes)
     app.register_blueprint(chatbot_routes)
     app.register_blueprint(forum_routes, url_prefix='/api/forum')
-    
+    app.register_blueprint(fruitdisease_routes)
+    app.register_blueprint(history_routes)
     # Health check route
     @app.route('/health', methods=['GET'])
     def health_check():

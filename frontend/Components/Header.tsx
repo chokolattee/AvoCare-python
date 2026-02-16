@@ -124,6 +124,25 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
   };
 
   const navigateTo = (screenName: string) => {
+    // Check if trying to access Scan without being logged in
+    if (screenName === 'Scan' && !user) {
+      Alert.alert(
+        'Login Required',
+        'Please sign in to access the Scan feature.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          },
+          {
+            text: 'Sign In',
+            onPress: () => navigation.navigate('AuthScreen')
+          }
+        ]
+      );
+      return;
+    }
+
     const tabScreens = ['Home', 'CommunityStack', 'Scan', 'Market', 'Profile'];
     if (tabScreens.includes(screenName)) {
       const { CommonActions } = require('@react-navigation/native');
@@ -186,13 +205,16 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
               >
                 <Text style={styles.navLinkText}>COMMUNITY</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.navLink}
-                onPress={() => navigateTo('Scan')}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.navLinkText}>SCAN</Text>
-              </TouchableOpacity>
+              {/* Only show Scan link if user is logged in */}
+              {user && (
+                <TouchableOpacity 
+                  style={styles.navLink}
+                  onPress={() => navigateTo('Scan')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.navLinkText}>SCAN</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity 
                 style={styles.navLink}
                 onPress={() => navigateTo('Market')}
@@ -264,6 +286,21 @@ const Header: React.FC<HeaderProps> = ({ onMenuPress, showNavLinks = true }) => 
                         <Ionicons name="person-outline" size={20} color="#5d873e" />
                       </View>
                       <Text style={styles.dropdownText}>My Profile</Text>
+                      <Ionicons name="chevron-forward" size={16} color="#999" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.dropdownItem}
+                      onPress={() => {
+                        setDropdownOpen(false);
+                        navigateTo('History');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.dropdownIconContainer}>
+                        <Ionicons name="time-outline" size={20} color="#5d873e" />
+                      </View>
+                      <Text style={styles.dropdownText}>History</Text>
                       <Ionicons name="chevron-forward" size={16} color="#999" />
                     </TouchableOpacity>
 

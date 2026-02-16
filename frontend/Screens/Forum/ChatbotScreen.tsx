@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   SafeAreaView,
   TextInput,
@@ -11,15 +10,13 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  Dimensions,
   Animated,
-  Keyboard,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-
-const { width } = Dimensions.get('window');
+import { API_BASE_URL as BASE_URL } from '../../config/api';
+import { styles } from '../../Styles/ChatbotScreen.styles';
 
 type RootStackParamList = {
   Home: undefined;
@@ -135,11 +132,7 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
   const [currentMessage, setCurrentMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
-
-  // Backend API URL - Update this to match your server
-  const API_BASE_URL = 'http://192.168.0.117:8081';
 
   // Default quick questions (fallback if API fails)
   const defaultQuestions = [
@@ -156,39 +149,18 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
     fetchSuggestions();
   }, []);
 
-  // Keyboard listeners
-  useEffect(() => {
-    const keyboardWillShow = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => {
-        setKeyboardHeight(e.endCoordinates.height);
-      }
-    );
-    const keyboardWillHide = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        setKeyboardHeight(0);
-      }
-    );
-
-    return () => {
-      keyboardWillShow.remove();
-      keyboardWillHide.remove();
-    };
-  }, []);
-
-  // Auto-scroll when messages update or keyboard appears
+  // Auto-scroll when messages update
   useEffect(() => {
     if (chatMessages.length > 0 || isTyping) {
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [chatMessages, isTyping, keyboardHeight]);
+  }, [chatMessages, isTyping]);
 
   const fetchSuggestions = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chatbot/suggestions`);
+      const response = await fetch(`${BASE_URL}/api/chatbot/suggestions`);
       
       if (response.ok) {
         const data = await response.json();
@@ -204,9 +176,9 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
   const sendMessageToBackend = async (message: string): Promise<{ text: string; isError: boolean }> => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      const response = await fetch(`${API_BASE_URL}/api/chatbot/chat`, {
+      const response = await fetch(`${BASE_URL}/api/chatbot/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -268,12 +240,10 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
     setCurrentMessage('');
     setIsTyping(true);
 
-    // Scroll after user message
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
 
-    // Get response from backend
     const { text, isError } = await sendMessageToBackend(userMessage.text);
 
     const botMessage: ChatMessage = {
@@ -287,7 +257,6 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
     setChatMessages(prev => [...prev, botMessage]);
     setIsTyping(false);
 
-    // Scroll after bot message
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 300);
@@ -295,7 +264,6 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleQuickQuestion = (question: string) => {
     setCurrentMessage(question);
-    // Auto-focus input after setting question
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
@@ -328,7 +296,6 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  // Get questions to display
   const displayQuestions = suggestions.length > 0 
     ? suggestions.map(s => s.question)
     : defaultQuestions;
@@ -384,20 +351,19 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
         </ScrollView>
       </View>
 
-      {/* Chat Container with KeyboardAvoidingView */}
+      {/* Main Chat Area with proper KeyboardAvoidingView */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.chatContainer}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex1}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        {/* Chat Messages - Scrollable */}
+        {/* Chat Messages */}
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
         >
           {chatMessages.map((message) => (
             <View
@@ -468,12 +434,9 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
               </View>
             </View>
           )}
-          
-          {/* Bottom padding for better scrolling */}
-          <View style={{ height: 20 }} />
         </ScrollView>
 
-        {/* Input Area - ALWAYS VISIBLE at bottom */}
+        {/* Input Area */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.messageInput}
@@ -484,7 +447,7 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
             multiline
             maxLength={1000}
             editable={!isTyping}
-            returnKeyType="default"
+            onSubmitEditing={handleSendMessage}
             blurOnSubmit={false}
           />
           <TouchableOpacity
@@ -510,256 +473,5 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#5d873e',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  backButton: {
-    padding: 4,
-    marginRight: 8,
-  },
-  headerCenter: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatarContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#4a6b31',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  headerTextContainer: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  headerSubtitle: {
-    fontSize: 11,
-    color: '#d4e5cc',
-    marginTop: 2,
-  },
-  clearButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  quickQuestionsSection: {
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e8e8e8',
-    paddingVertical: 10,
-  },
-  quickQuestionsTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#5d873e',
-    paddingHorizontal: 12,
-    marginBottom: 8,
-  },
-  quickQuestionsContent: {
-    paddingHorizontal: 12,
-  },
-  quickQuestionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#e8f5e9',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#5d873e',
-    maxWidth: width * 0.7,
-  },
-  questionIcon: {
-    marginRight: 6,
-  },
-  quickQuestionText: {
-    fontSize: 12,
-    color: '#5d873e',
-    fontWeight: '500',
-    flexShrink: 1,
-  },
-  chatContainer: {
-    flex: 1,
-  },
-  messagesContainer: {
-    flex: 1,
-  },
-  messagesContent: {
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
-  messageWrapper: {
-    marginBottom: 12,
-    width: '100%',
-  },
-  userMessageWrapper: {
-    alignItems: 'flex-end',
-  },
-  botMessageWrapper: {
-    alignItems: 'flex-start',
-  },
-  messageContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    maxWidth: '85%',
-  },
-  userMessageContainer: {
-    justifyContent: 'flex-end',
-  },
-  botMessageContainer: {
-    justifyContent: 'flex-start',
-  },
-  botAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#e8f5e9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#5d873e',
-    flexShrink: 0,
-  },
-  errorAvatar: {
-    backgroundColor: '#ffebee',
-    borderColor: '#d32f2f',
-  },
-  messageBubble: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
-    flex: 1,
-    minWidth: 60,
-  },
-  userMessageBubble: {
-    backgroundColor: '#5d873e',
-    borderBottomRightRadius: 4,
-  },
-  botMessageBubble: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderBottomLeftRadius: 4,
-  },
-  errorMessageBubble: {
-    backgroundColor: '#ffebee',
-    borderColor: '#ffcdd2',
-  },
-  typingBubble: {
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    minWidth: 70,
-  },
-  messageText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  userMessageText: {
-    color: '#fff',
-  },
-  botMessageText: {
-    color: '#333',
-  },
-  errorMessageText: {
-    color: '#c62828',
-  },
-  timestamp: {
-    fontSize: 10,
-    marginTop: 4,
-  },
-  userTimestamp: {
-    color: '#d4e5cc',
-    textAlign: 'right',
-  },
-  botTimestamp: {
-    color: '#999',
-  },
-  typingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 20,
-  },
-  typingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#5d873e',
-    marginHorizontal: 3,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 10 : 10,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  messageInput: {
-    flex: 1,
-    backgroundColor: '#f8f8f8',
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 10,
-    fontSize: 14,
-    maxHeight: 100,
-    marginRight: 10,
-    color: '#333',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    textAlignVertical: 'top',
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#5d873e',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    marginBottom: 2,
-  },
-  sendButtonDisabled: {
-    backgroundColor: '#e8e8e8',
-    elevation: 0,
-  },
-});
 
 export default ChatbotScreen;

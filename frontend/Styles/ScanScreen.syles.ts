@@ -1,4 +1,7 @@
-import { StyleSheet, Platform } from 'react-native';
+import { StyleSheet, Platform, Dimensions } from 'react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const maxContentWidth = Math.min(screenWidth - 32, 600); // Max width with 16px padding on each side
 
 export const styles = StyleSheet.create({
   topTabContainer: {
@@ -72,18 +75,18 @@ export const styles = StyleSheet.create({
     marginBottom: 10,
   },
   probabilityLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#666',
-    width: 100,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    width: 120,
     marginRight: 8,
     textTransform: 'capitalize',
   },
   probabilityBar: {
     flex: 1,
-    height: 20,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 10,
+    height: 24,
+    backgroundColor: '#d0d0d0',
+    borderRadius: 12,
     overflow: 'hidden',
     marginRight: 8,
   },
@@ -321,9 +324,13 @@ export const styles = StyleSheet.create({
   },
   resultCard: {
     backgroundColor: '#fff',
-    margin: 16,
+    marginHorizontal: 16,
+    marginVertical: 16,
     borderRadius: 12,
     padding: 16,
+    maxWidth: maxContentWidth,
+    alignSelf: 'center',
+    width: '100%',
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -409,6 +416,9 @@ export const styles = StyleSheet.create({
     padding: 20,
     gap: 12,
     alignItems: 'center',
+    maxWidth: maxContentWidth,
+    alignSelf: 'center',
+    width: '100%',
   },
   captureButton: {
     width: 80,
@@ -435,7 +445,6 @@ export const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 8,
     width: '100%',
-    maxWidth: 300,
   },
   primaryButton: {
     backgroundColor: '#4CAF50',
@@ -462,6 +471,8 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 16,
     lineHeight: 20,
+    maxWidth: maxContentWidth,
+    alignSelf: 'center',
   },
   errorTitle: {
     fontSize: 20,
@@ -502,7 +513,7 @@ export const styles = StyleSheet.create({
   },
   imageComparisonRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
     justifyContent: 'space-between',
   },
   imageComparisonItem: {
@@ -525,6 +536,8 @@ export const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
     borderWidth: 2,
     borderColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   comparisonImage: {
     width: '100%',
@@ -575,5 +588,147 @@ export const styles = StyleSheet.create({
     fontSize: 13,
     color: '#37474F',
     lineHeight: 20,
+  },
+  // Add these styles to your ScanScreen.styles.ts
+
+  detectionBanner: {
+    backgroundColor: '#4CAF50',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  detectionBannerText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  detectionsListContainer: {
+    marginBottom: 16,
+  },
+  detectionsListTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  detectionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    borderColor: '#e0e0e0',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  detectionCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  detectionCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  detectionCardNumber: {
+    fontSize: 16,
+    fontWeight: '700',
+    minWidth: 35,
+  },
+  detectionCardClass: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    flex: 1,
+  },
+  primaryBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  primaryBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  confidenceBadge: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  confidenceBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  miniProbabilityContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  miniProbabilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  miniProbabilityLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    width: 100,
+    marginRight: 6,
+  },
+  miniProbabilityBar: {
+    flex: 1,
+    height: 18,
+    backgroundColor: '#d0d0d0',
+    borderRadius: 9,
+    overflow: 'hidden',
+    marginRight: 6,
+  },
+  miniProbabilityFill: {
+    height: '100%',
+    borderRadius: 7,
+  },
+  miniProbabilityValue: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#333',
+    width: 40,
+    textAlign: 'right',
+  },
+  detectionConfidenceText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#fff',
+    marginTop: 2,
+  },
+  miniRecommendation: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+  },
+  miniRecommendationText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

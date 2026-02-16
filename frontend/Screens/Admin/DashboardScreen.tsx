@@ -7,11 +7,15 @@ import {
   TouchableOpacity,
   RefreshControl,
   SafeAreaView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LineChart, BarChart, PieChart, ProgressChart } from 'react-native-chart-kit';
 import { styles } from '../../Styles/DashboardScreen.styles';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE_URL } from '../../config/api';
 
 type AdminStackParamList = {
   Dashboard: undefined;
@@ -36,9 +40,23 @@ interface StatCard {
   color: string;
 }
 
+// Distinct color palette for charts
+const CHART_COLORS = {
+  leaves: '#5d873e',      // Green
+  ripeness: '#f59e0b',    // Amber/Orange
+  disease: '#ef4444',     // Red
+  forum: '#6366f1',       // Indigo/Purple
+};
+
+const PIE_COLORS = ['#ef4444', '#f59e0b', '#6366f1', '#10b981', '#ec4899'];
+
+const PROGRESS_COLORS = ['#5d873e', '#f59e0b', '#ef4444', '#6366f1'];
+
 const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
   const { width } = dimensions;
   const isTablet = width >= 768;
 
@@ -49,118 +67,174 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
     return () => subscription?.remove();
   }, []);
 
+  useEffect(() => {
+    fetchDashboardStats();
+  }, []);
+
+  const fetchDashboardStats = async () => {
+    try {
+      setLoading(true);
+      const token = await AsyncStorage.getItem('jwt') || await AsyncStorage.getItem('token');
+
+      if (!token) {
+        Alert.alert('Error', 'Authentication required');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/users/dashboard/stats`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setDashboardStats(data.stats);
+      } else {
+        Alert.alert('Error', data.message || 'Failed to fetch dashboard stats');
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+      Alert.alert('Error', 'Failed to fetch dashboard statistics');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
-    // Simulate API call
-    setTimeout(() => setRefreshing(false), 2000);
+    await fetchDashboardStats();
+    setRefreshing(false);
   };
 
   // Stats Cards Data
-  const statsCards: StatCard[] = [
+  const statsCards: StatCard[] = dashboardStats ? [
     {
       title: 'Total Users',
-      value: '2,543',
+      value: dashboardStats.total_users.toLocaleString(),
       icon: 'people',
-      change: '+12.5%',
+      change: `${dashboardStats.active_users} active`,
       trend: 'up',
       color: '#5d873e',
     },
     {
-      title: 'Active Scans',
-      value: '1,832',
+      title: 'Total Scans',
+      value: dashboardStats.total_scans.toLocaleString(),
       icon: 'scan',
-      change: '+8.2%',
+      change: `+${dashboardStats.recent_scans} this week`,
       trend: 'up',
-      color: '#90b481',
+      color: '#f59e0b',
     },
     {
       title: 'Forum Posts',
-      value: '456',
+      value: dashboardStats.total_posts.toLocaleString(),
       icon: 'chatbubbles',
-      change: '+15.3%',
+      change: 'All time',
       trend: 'up',
-      color: '#6b9356',
+      color: '#6366f1',
     },
     {
-      title: 'Market Sales',
-      value: '$12.5K',
-      icon: 'cart',
-      change: '-2.4%',
-      trend: 'down',
-      color: '#7fa768',
+      title: 'Leaf Scans',
+      value: dashboardStats.scan_distribution.leaves.toLocaleString(),
+      icon: 'leaf',
+      change: 'Total',
+      trend: 'up',
+      color: '#ef4444',
     },
-  ];
+  ] : [];
+
+  // Chart width: subtract horizontal padding (16*2) + card padding (16*2) + scrollbar margin
+  const SCREEN_PADDING = 32; // 16px each side
+  const CARD_PADDING = 32;   // 16px each side of card
+  const chartWidth = isTablet
+    ? Math.floor((width - SCREEN_PADDING - 16) / 2) - CARD_PADDING // 16 = gap between cards
+    : width - SCREEN_PADDING - CARD_PADDING;
 
   // User Activity Chart Data (Last 7 days)
-  const userActivityData = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+  const userActivityData = dashboardStats ? {
+    labels: dashboardStats.days_labels,
     datasets: [
       {
-        data: [120, 145, 167, 189, 205, 195, 220],
+        data: dashboardStats.activity_by_day.length > 0 ? dashboardStats.activity_by_day : [0],
         color: (opacity = 1) => `rgba(93, 135, 62, ${opacity})`,
         strokeWidth: 3,
       },
     ],
+  } : {
+    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    datasets: [{ data: [0], color: (opacity = 1) => `rgba(93, 135, 62, ${opacity})`, strokeWidth: 3 }],
   };
 
-  // Scan Distribution Data
-  const scanDistributionData = {
-    labels: ['Leaves', 'Ripeness', 'Disease', 'Pest'],
+  // Scan Distribution Data — each bar gets its own distinct color via custom renderBars
+  const scanDistributionData = dashboardStats ? {
+    labels: ['Leaves', 'Ripeness', 'Disease'],
     datasets: [
       {
-        data: [45, 30, 15, 10],
+        data: [
+          dashboardStats.scan_distribution.leaves || 1,
+          dashboardStats.scan_distribution.ripeness || 1,
+          dashboardStats.scan_distribution.fruit_disease || 1,
+        ],
+        colors: [
+          (opacity = 1) => `rgba(93, 135, 62, ${opacity})`,   // Leaves — green
+          (opacity = 1) => `rgba(245, 158, 11, ${opacity})`,  // Ripeness — amber
+          (opacity = 1) => `rgba(239, 68, 68, ${opacity})`,   // Disease — red
+        ],
       },
     ],
+  } : {
+    labels: ['Leaves', 'Ripeness', 'Disease'],
+    datasets: [{
+      data: [1, 1, 1],
+      colors: [
+        (opacity = 1) => `rgba(93, 135, 62, ${opacity})`,
+        (opacity = 1) => `rgba(245, 158, 11, ${opacity})`,
+        (opacity = 1) => `rgba(239, 68, 68, ${opacity})`,
+      ],
+    }],
   };
 
-  // Disease Detection Data (Pie Chart)
-  const diseaseData = [
-    {
-      name: 'Healthy',
-      population: 65,
-      color: '#5d873e',
-      legendFontColor: '#2d3e2d',
-      legendFontSize: 12,
-    },
-    {
-      name: 'Anthracnose',
-      population: 15,
-      color: '#d94444',
-      legendFontColor: '#2d3e2d',
-      legendFontSize: 12,
-    },
-    {
-      name: 'Phytophthora',
-      population: 12,
-      color: '#f59e0b',
-      legendFontColor: '#2d3e2d',
-      legendFontSize: 12,
-    },
-    {
-      name: 'Other',
-      population: 8,
-      color: '#94a3b8',
-      legendFontColor: '#2d3e2d',
-      legendFontSize: 12,
-    },
-  ];
+  // Disease Detection Data (Pie Chart) — distinct colors
+  const diseaseData = dashboardStats && dashboardStats.disease_distribution && dashboardStats.disease_distribution.length > 0
+    ? dashboardStats.disease_distribution.map((item: any, index: number) => ({
+        name: item.name,
+        population: item.population,
+        color: PIE_COLORS[index % PIE_COLORS.length],
+        legendFontColor: '#2d3e2d',
+        legendFontSize: 12,
+      }))
+    : [
+        {
+          name: 'No Data',
+          population: 100,
+          color: '#94a3b8',
+          legendFontColor: '#2d3e2d',
+          legendFontSize: 12,
+        },
+      ];
 
-  // System Health Data
-  const systemHealthData = {
-    labels: ['API', 'DB', 'Storage', 'AI Model'],
-    data: [0.98, 0.95, 0.99, 0.92],
-  };
+  // Leaf Health Data (Progress Chart) — distinct colors per ring
+  const leafHealthData = dashboardStats && dashboardStats.leaf_distribution
+    ? {
+        labels: Object.keys(dashboardStats.leaf_distribution),
+        data: Object.values(dashboardStats.leaf_distribution) as number[],
+      }
+    : {
+        labels: ['No Data'],
+        data: [0] as number[],
+      };
 
-  const chartConfig = {
+  const baseChartConfig = {
     backgroundColor: '#ffffff',
     backgroundGradientFrom: '#ffffff',
     backgroundGradientTo: '#ffffff',
     decimalPlaces: 0,
     color: (opacity = 1) => `rgba(93, 135, 62, ${opacity})`,
     labelColor: (opacity = 1) => `rgba(45, 62, 45, ${opacity})`,
-    style: {
-      borderRadius: 12,
-    },
+    style: { borderRadius: 12 },
     propsForDots: {
       r: '5',
       strokeWidth: '2',
@@ -173,7 +247,36 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
     },
   };
 
-  const chartWidth = isTablet ? width * 0.45 : width - 48;
+  // BarChart config with per-bar colors (withCustomBarColorFromData)
+  const barChartConfig = {
+    ...baseChartConfig,
+    color: (opacity = 1) => `rgba(93, 135, 62, ${opacity})`,
+  };
+
+  // ProgressChart config cycles through distinct colors
+  const progressChartConfig = {
+    ...baseChartConfig,
+    color: (opacity = 1, index?: number) => {
+      const colors = [
+        `rgba(93, 135, 62, ${opacity})`,   // green
+        `rgba(245, 158, 11, ${opacity})`,  // amber
+        `rgba(239, 68, 68, ${opacity})`,   // red
+        `rgba(99, 102, 241, ${opacity})`,  // indigo
+      ];
+      return colors[(index ?? 0) % colors.length];
+    },
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#5d873e" />
+          <Text style={styles.loadingText}>Loading dashboard...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -208,7 +311,7 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
               ]}
             >
               <View style={styles.statCardHeader}>
-                <View style={[styles.statIconContainer, { backgroundColor: `${card.color}15` }]}>
+                <View style={[styles.statIconContainer, { backgroundColor: `${card.color}18` }]}>
                   <Ionicons name={card.icon} size={24} color={card.color} />
                 </View>
                 <View
@@ -232,7 +335,7 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
                   </Text>
                 </View>
               </View>
-              <Text style={styles.statValue}>{card.value}</Text>
+              <Text style={[styles.statValue, { color: card.color }]}>{card.value}</Text>
               <Text style={styles.statTitle}>{card.title}</Text>
             </View>
           ))}
@@ -240,118 +343,120 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Charts Section */}
         <View style={[styles.chartsContainer, isTablet && styles.chartsContainerTablet]}>
+
           {/* User Activity Chart */}
-          <View style={[styles.chartCard, isTablet && { width: '48%' }]}>
+          <View style={[styles.chartCard, isTablet && styles.chartCardHalf]}>
             <View style={styles.chartHeader}>
               <Text style={styles.chartTitle}>User Activity</Text>
               <Text style={styles.chartSubtitle}>Last 7 days</Text>
             </View>
-            <LineChart
-              data={userActivityData}
-              width={chartWidth}
-              height={220}
-              chartConfig={chartConfig}
-              bezier
-              style={styles.chart}
-              withInnerLines={true}
-              withOuterLines={true}
-              withVerticalLines={false}
-              withHorizontalLines={true}
-              withDots={true}
-              withShadow={false}
-              fromZero
-            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <LineChart
+                data={userActivityData}
+                width={chartWidth}
+                height={220}
+                chartConfig={baseChartConfig}
+                bezier
+                style={styles.chart}
+                withInnerLines={true}
+                withOuterLines={true}
+                withVerticalLines={false}
+                withHorizontalLines={true}
+                withDots={true}
+                withShadow={false}
+                fromZero
+              />
+            </ScrollView>
           </View>
 
-          {/* Scan Distribution Chart */}
-          <View style={[styles.chartCard, isTablet && { width: '48%' }]}>
+          {/* Scan Distribution Chart — per-bar colors */}
+          <View style={[styles.chartCard, isTablet && styles.chartCardHalf]}>
             <View style={styles.chartHeader}>
               <Text style={styles.chartTitle}>Scan Distribution</Text>
               <Text style={styles.chartSubtitle}>By category</Text>
             </View>
-            <BarChart
-              data={scanDistributionData}
-              width={chartWidth}
-              height={220}
-              chartConfig={chartConfig}
-              style={styles.chart}
-              showValuesOnTopOfBars
-              withInnerLines={false}
-              fromZero
-              yAxisLabel=""
-              yAxisSuffix="%"
-            />
+            {/* Color legend */}
+            <View style={styles.legendRow}>
+              {[
+                { label: 'Leaves', color: '#5d873e' },
+                { label: 'Ripeness', color: '#f59e0b' },
+                { label: 'Disease', color: '#ef4444' },
+              ].map((item) => (
+                <View key={item.label} style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                  <Text style={styles.legendLabel}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <BarChart
+                data={scanDistributionData}
+                width={chartWidth}
+                height={220}
+                chartConfig={barChartConfig}
+                style={styles.chart}
+                showValuesOnTopOfBars
+                withInnerLines={false}
+                fromZero
+                yAxisLabel=""
+                yAxisSuffix=""
+                withCustomBarColorFromData
+                flatColor
+              />
+            </ScrollView>
           </View>
 
           {/* Disease Detection Pie Chart */}
-          <View style={[styles.chartCard, isTablet && { width: '48%' }]}>
+          <View style={[styles.chartCard, isTablet && styles.chartCardHalf]}>
             <View style={styles.chartHeader}>
               <Text style={styles.chartTitle}>Disease Detection</Text>
               <Text style={styles.chartSubtitle}>Distribution</Text>
             </View>
-            <PieChart
-              data={diseaseData}
-              width={chartWidth}
-              height={200}
-              chartConfig={chartConfig}
-              accessor="population"
-              backgroundColor="transparent"
-              paddingLeft="15"
-              style={styles.chart}
-              absolute
-            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <PieChart
+                data={diseaseData}
+                width={chartWidth}
+                height={200}
+                chartConfig={baseChartConfig}
+                accessor="population"
+                backgroundColor="transparent"
+                paddingLeft="15"
+                style={styles.chart}
+                absolute
+              />
+            </ScrollView>
           </View>
 
-          {/* System Health Chart */}
-          <View style={[styles.chartCard, isTablet && { width: '48%' }]}>
+          {/* Leaf Health Progress Chart */}
+          <View style={[styles.chartCard, isTablet && styles.chartCardHalf]}>
             <View style={styles.chartHeader}>
-              <Text style={styles.chartTitle}>System Health</Text>
-              <Text style={styles.chartSubtitle}>Performance metrics</Text>
+              <Text style={styles.chartTitle}>Leaf Health Distribution</Text>
+              <Text style={styles.chartSubtitle}>By condition</Text>
             </View>
-            <ProgressChart
-              data={systemHealthData}
-              width={chartWidth}
-              height={200}
-              chartConfig={{
-                ...chartConfig,
-                color: (opacity = 1, index) => {
-                  const colors = ['#5d873e', '#90b481', '#6b9356', '#7fa768'];
-                  return colors[index || 0];
-                },
-              }}
-              style={styles.chart}
-              strokeWidth={12}
-              radius={32}
-              hideLegend={false}
-            />
-          </View>
-        </View>
-
-        {/* Recent Activity */}
-        <View style={styles.activityCard}>
-          <View style={styles.activityHeader}>
-            <Text style={styles.activityTitle}>Recent Activity</Text>
-            <TouchableOpacity>
-              <Text style={styles.viewAllButton}>View All</Text>
-            </TouchableOpacity>
-          </View>
-          {[
-            { icon: 'person-add' as const, text: 'New user registered', time: '5 min ago', color: '#5d873e' },
-            { icon: 'scan' as const, text: 'Disease scan completed', time: '12 min ago', color: '#90b481' },
-            { icon: 'chatbubble' as const, text: 'New forum post created', time: '23 min ago', color: '#6b9356' },
-            { icon: 'cart' as const, text: 'Product listed on market', time: '1 hour ago', color: '#7fa768' },
-          ].map((activity, index) => (
-            <View key={index} style={styles.activityItem}>
-              <View style={[styles.activityIcon, { backgroundColor: `${activity.color}15` }]}>
-                <Ionicons name={activity.icon} size={20} color={activity.color} />
+            {/* Color legend for progress rings */}
+            {leafHealthData.labels.length > 0 && leafHealthData.labels[0] !== 'No Data' && (
+              <View style={styles.legendRow}>
+                {leafHealthData.labels.map((label: string, i: number) => (
+                  <View key={label} style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: PROGRESS_COLORS[i % PROGRESS_COLORS.length] }]} />
+                    <Text style={styles.legendLabel}>{label}</Text>
+                  </View>
+                ))}
               </View>
-              <View style={styles.activityContent}>
-                <Text style={styles.activityText}>{activity.text}</Text>
-                <Text style={styles.activityTime}>{activity.time}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
-            </View>
-          ))}
+            )}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <ProgressChart
+                data={leafHealthData}
+                width={chartWidth}
+                height={200}
+                chartConfig={progressChartConfig}
+                style={styles.chart}
+                strokeWidth={12}
+                radius={32}
+                hideLegend={false}
+              />
+            </ScrollView>
+          </View>
         </View>
 
         {/* Quick Actions */}
@@ -360,16 +465,16 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.quickActionsGrid}>
             {[
               { icon: 'people' as const, label: 'Manage Users', screen: 'Users', color: '#5d873e' },
-              { icon: 'bar-chart' as const, label: 'View Analysis', screen: 'Analysis', color: '#90b481' },
-              { icon: 'chatbubbles' as const, label: 'Forum Posts', screen: 'Forum', color: '#6b9356' },
-              { icon: 'storefront' as const, label: 'Market Items', screen: 'Market', color: '#7fa768' },
+              { icon: 'bar-chart' as const, label: 'View Analysis', screen: 'Analysis', color: '#6366f1' },
+              { icon: 'chatbubbles' as const, label: 'Forum Posts', screen: 'Forum', color: '#f59e0b' },
+              { icon: 'storefront' as const, label: 'Market Items', screen: 'Market', color: '#ef4444' },
             ].map((action, index) => (
               <TouchableOpacity
                 key={index}
                 style={styles.quickActionButton}
                 onPress={() => navigation.navigate(action.screen as any)}
               >
-                <View style={[styles.quickActionIcon, { backgroundColor: `${action.color}15` }]}>
+                <View style={[styles.quickActionIcon, { backgroundColor: `${action.color}18` }]}>
                   <Ionicons name={action.icon} size={28} color={action.color} />
                 </View>
                 <Text style={styles.quickActionLabel}>{action.label}</Text>

@@ -252,6 +252,20 @@ def update_profile():
 # ADMIN ROUTES (Require Admin Role)
 # ==========================================
 
+@user_routes.route('/dashboard/stats', methods=['GET'])
+@token_required
+@admin_required
+def get_dashboard_stats():
+    """Get dashboard statistics (Admin only)"""
+    return UserController.get_dashboard_stats()
+
+@user_routes.route('/analysis/stats', methods=['GET'])
+@token_required
+@admin_required
+def get_analysis_stats():
+    """Get comprehensive analysis statistics (Admin only)"""
+    return UserController.get_analysis_stats()
+
 @user_routes.route('/', methods=['GET'])
 @token_required
 @admin_required

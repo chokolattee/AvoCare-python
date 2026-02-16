@@ -2,7 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { View, StyleSheet, Platform, Modal, ScrollView, Animated, TouchableOpacity, Text, Dimensions } from 'react-native';
+import { View, StyleSheet, Platform, Modal, ScrollView, Animated, TouchableOpacity, Text, Dimensions, Alert } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
@@ -22,6 +22,7 @@ import PostDetailScreen from '../Screens/Forum/PostDetailScreen';
 import EditPostScreen from '../Screens/Forum/EditPostScreen';
 import AboutScreen from '../Screens/AboutScreen';
 import AdminNavigator from './AdminNavigator'; 
+import HistoryScreen from '../Screens/HistoryScreen';
 
 // ==========================================
 // TYPE DEFINITIONS - UPDATED FOR NESTED NAVIGATION
@@ -57,6 +58,7 @@ export type RootStackParamList = {
   Chatbot: undefined;
   About: undefined;
   Admin: undefined;
+  History: undefined;
 };
 
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -66,15 +68,44 @@ const CommunityStackNav = createStackNavigator<CommunityStackParamList>();
 // Mobile Menu Modal Component
 function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; onClose: () => void; navigation: any }) {
   const [screenWidth, setScreenWidth] = useState(getScreenWidth());
+  const [user, setUser] = useState<any>(null);
   const slideAnim = useRef(new Animated.Value(-screenWidth * 0.75)).current;
   
-  const menuItems = [
+  const allMenuItems = [
     { name: 'Home', route: 'Home', icon: 'home-outline' },
     { name: 'Community', route: 'CommunityStack', icon: 'people-outline' },
-    { name: 'Scan', route: 'Scan', icon: 'camera-outline' },
+    { name: 'Scan', route: 'Scan', icon: 'camera-outline', requiresAuth: true },
     { name: 'Market', route: 'Market', icon: 'storefront-outline' },
     { name: 'About', route: 'About', icon: 'information-circle-outline' },
   ];
+
+  // Filter menu items based on user authentication
+  const menuItems = allMenuItems.filter(item => 
+    !item.requiresAuth || (item.requiresAuth && user)
+  );
+
+  // Load user data when modal becomes visible
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const token = await AsyncStorage.getItem('jwt') || await AsyncStorage.getItem('token');
+        const userData = await AsyncStorage.getItem('user');
+        
+        if (token && userData) {
+          setUser(JSON.parse(userData));
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Error loading user:', error);
+        setUser(null);
+      }
+    };
+
+    if (visible) {
+      loadUser();
+    }
+  }, [visible]);
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({ window }) => {
@@ -380,6 +411,7 @@ export default function AppNavigator() {
         },
         Chatbot: 'chatbot',
         About: 'about',
+        History: 'history',
         Admin: 'admin',
       },
     },
@@ -420,6 +452,15 @@ export default function AppNavigator() {
         <Stack.Screen 
           name="About" 
           component={AboutScreen}
+          options={({ navigation }) => ({
+            presentation: 'card', 
+            headerShown: true,
+            header: () => <CustomHeader navigation={navigation} />,
+          })}
+        />
+        <Stack.Screen 
+          name="History" 
+          component={HistoryScreen}
           options={({ navigation }) => ({
             presentation: 'card', 
             headerShown: true,
