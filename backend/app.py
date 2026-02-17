@@ -27,6 +27,14 @@ def create_app():
     try:
         connect(host=app.config['MONGODB_SETTINGS']['host'])
         print("✅ MongoDB connected successfully")
+        
+        # Seed default categories
+        try:
+            from models.category import seed_categories
+            seed_categories()
+            print("✅ Default categories seeded")
+        except Exception as e:
+            print(f"⚠️  Category seeding warning: {str(e)}")
     except Exception as e:
         print(f"❌ MongoDB connection failed: {str(e)}")
         print("   Please check your MONGODB_URI in .env file\n")
@@ -68,6 +76,7 @@ def create_app():
     from routes.forum_routes import forum_routes 
     from routes.fruitdisease_routes import fruitdisease_routes   
     from routes.history_routes import history_routes
+    from routes.product_routes import product_bp
     
     app.register_blueprint(user_routes)
     app.register_blueprint(leaves_routes)
@@ -76,6 +85,7 @@ def create_app():
     app.register_blueprint(forum_routes, url_prefix='/api/forum')
     app.register_blueprint(fruitdisease_routes)
     app.register_blueprint(history_routes)
+    app.register_blueprint(product_bp, url_prefix='/api')
     # Health check route
     @app.route('/health', methods=['GET'])
     def health_check():

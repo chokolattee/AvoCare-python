@@ -98,3 +98,6 @@ pymd5
 
 # System libraries
 libclang
+
+# For Cloudinary image upload
+cloudinary

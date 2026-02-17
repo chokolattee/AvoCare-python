@@ -8,6 +8,7 @@ import AnalysisScreen from '../Screens/Admin/AnalysisScreen';
 import MarketScreen from '../Screens/MarketScreen';
 import ForumScreen from '../Screens/Admin/ForumScreen';
 import Header from '../Components/Header';
+import ProductScreen from '../Screens/Admin/ProductScreen';
 
 export type AdminDrawerParamList = {
   Dashboard: undefined;
@@ -15,6 +16,7 @@ export type AdminDrawerParamList = {
   Market: undefined;
   Forum: undefined;
   Analysis: undefined;
+  Products: undefined;
 };
 
 const Drawer = createDrawerNavigator<AdminDrawerParamList>();
@@ -105,6 +107,16 @@ const AdminNavigator = () => {
           drawerLabel: 'Analysis',
           drawerIcon: ({ color, size }: { color: string; size: number }) => (
             <Ionicons name="bar-chart" size={20} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="Products"
+        component={ProductScreen}
+        options={{
+          drawerLabel: 'Products',
+          drawerIcon: ({ color, size }: { color: string; size: number }) => (
+            <Ionicons name="cube" size={20} color={color} />
           ),
         }}
       />

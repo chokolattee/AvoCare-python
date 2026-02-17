@@ -23,6 +23,7 @@ import EditPostScreen from '../Screens/Forum/EditPostScreen';
 import AboutScreen from '../Screens/AboutScreen';
 import AdminNavigator from './AdminNavigator'; 
 import HistoryScreen from '../Screens/HistoryScreen';
+import ProductDetailScreen from '../Screens/ProductDetailScreen';
 
 // ==========================================
 // TYPE DEFINITIONS - UPDATED FOR NESTED NAVIGATION
@@ -59,6 +60,7 @@ export type RootStackParamList = {
   About: undefined;
   Admin: undefined;
   History: undefined;
+  ProductDetail: { productId: string };
 };
 
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -474,6 +476,15 @@ export default function AppNavigator() {
             presentation: 'card', 
             headerShown: false, 
           }}
+        />
+        <Stack.Screen
+          name="ProductDetail"
+          component={ProductDetailScreen}
+          options={({ navigation }) => ({
+            presentation: 'card',
+            headerShown: true,
+            header: () => <CustomHeader navigation={navigation} />,
+          })}
         />
       </Stack.Navigator>
     </NavigationContainer>

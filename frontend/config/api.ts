@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 const getBaseUrl = (): string => {
-  return 'http://192.168.0.111:8081';  
+  return 'http://192.168.0.113:8081';  
 };
 
 export const BASE_URL = getBaseUrl();
