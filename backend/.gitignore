@@ -1,0 +1,110 @@
+# dependencies
+node_modules/
+
+# Python virtual environment
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Python cache
+backend/_pycache_/
+backend/**/_pycache_/
+backend/controllers/__pycache__/
+backend/routes/__pycache__/
+backend/middleware/__pycache__/
+backend/utils/__pycache__/
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+.env
+backend/.env
+
+# typescript
+*.tsbuildinfo
+
+# Backend specific
+backend/data/
+backend/datasets/
+backend/firebase/
+backend/models/train/
+backend/models/*.h5
+backend/models/**/*.h5
+backend/models/checkpoints/
+backend/models/logs/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.appcat
+.appmod
+backend/settings.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage reports
+coverage/
+*.lcov
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+
+#training models
+backend/train_model/model_ripenessv1
+backend/train_model/models
+backend/train_model/models_fruits
+backend/train_model/models_leaves
+backend/train_model/models_leavesv2
+backend/train_model/models_leavesv3
+backend/train_model/models_ripeness
+backend/train_model/models_ripenessv2
+backend/train_model/results
+backend/train_model/results_fruits
+backend/train_model/results_leaves
+backend/train_model/results_leavesv2
+backend/train_model/results_leavesv3
+backend/train_model/results_ripeness
+backend/train_model/results_ripenessv1
+backend/train_model/results_ripenessv2
+
+package.json.MUUESiBpusxT8xYKYuidpJ8_wYP_DiLrvKdzlfJlN-A

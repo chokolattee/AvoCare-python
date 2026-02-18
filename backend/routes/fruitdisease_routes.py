@@ -11,8 +11,7 @@ fruitdisease_routes = Blueprint('fruitdisease', __name__, url_prefix='/api/fruit
 
 # Try to load the trained model from train directory
 MODEL_PATHS = [
-    'train_model/models_fruits/best_model.keras',
-    'train_model/models_fruits/best_model.h5',
+    'train_model/final_model/fruits_best_model.keras'
 ]
 model = None
 

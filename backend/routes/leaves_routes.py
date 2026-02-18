@@ -11,8 +11,7 @@ leaves_routes = Blueprint('leaves', __name__, url_prefix='/api/leaves')
 
 # Try to load the trained model from train directory
 MODEL_PATHS = [
-    'train_model/models_leavesv3/best_model.keras',
-    'train_model/models_leavesv3/best_model.h5',
+    'train_model/final_model/leaves_best_model.keras'
 ]
 model = None
 

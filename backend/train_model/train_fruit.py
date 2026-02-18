@@ -24,9 +24,9 @@ TARGET_SAMPLES_PER_CLASS = None  # None = use median, or set a specific number
 
 # Paths - using relative paths from script location
 SCRIPT_DIR = Path(__file__).parent
-BASE_DIR = SCRIPT_DIR.parent / "datasets" / "fruits"
-MODEL_DIR = SCRIPT_DIR / "models_fruits"
-RESULTS_DIR = SCRIPT_DIR / "results_fruits"
+BASE_DIR = SCRIPT_DIR.parent / "datasets" / "fruit-disease"
+MODEL_DIR = SCRIPT_DIR / "models_fruit-disease"
+RESULTS_DIR = SCRIPT_DIR / "results_fruit-disease"
 
 # Create directories
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
