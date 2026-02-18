@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 const C = {
   forest:     '#2d5016',
@@ -29,8 +29,18 @@ export const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#eef3e8',
-    // No height:'100%' — matches the CommunityScreen pattern that works on web.
-    // flex:1 is sufficient when the navigator/root gives a bounded height.
+    // On web: SafeAreaView renders as an unsized div — the browser won't
+    // constrain its height, so the inner ScrollView expands to fit all content
+    // and never actually scrolls. We fix this by locking it to the viewport.
+    ...(Platform.OS === 'web'
+      ? ({
+          height: '100vh',
+          maxHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        } as any)
+      : {}),
   },
 
   // ─── Top bar ──────────────────────────────────────────────────────────────
@@ -40,14 +50,15 @@ export const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
     alignItems: 'center',
-    zIndex: 10,
+    // Must not shrink so the ScrollView gets all remaining height
+    ...(Platform.OS === 'web' ? ({ flexShrink: 0 } as any) : {}),
   },
   topBarInner: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     gap: 12,
   },
   backBtn: {
@@ -75,26 +86,23 @@ export const styles = StyleSheet.create({
   },
 
   // ─── Scroll view ──────────────────────────────────────────────────────────
-  // KEY: flex:1 fills space below the top bar.
-  // contentContainer uses flexGrow:1 + paddingBottom only — NO alignItems:'center'.
-  // Centering is done by the child contentColumn using alignSelf:'center' + maxWidth,
-  // exactly like CommunityScreen's centerColumn pattern.
   scroll: {
-    flex: 1,
+    // On web: must fill remaining height AND have overflow so it scrolls.
+    // minHeight:0 is the critical piece — without it, a flex child refuses
+    // to shrink below its content size, so the scroll area always grows to
+    // fit everything and the ScrollView never triggers.
+    ...(Platform.OS === 'web'
+      ? ({
+          flex: 1,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          minHeight: 0,
+        } as any)
+      : {}),
   },
   scrollContent: {
-    flexGrow: 1,
     paddingBottom: 60,
-    // ❌ No alignItems:'center' here — this collapses height on web and breaks scroll.
-  },
-
-  // ─── Centered content column ──────────────────────────────────────────────
-  // alignSelf:'center' + maxWidth + width:'100%' is the correct web-safe centering
-  // pattern (same as CommunityScreen's centerColumn: maxWidth:600, alignSelf:'center').
-  contentColumn: {
-    width: '100%',
-    maxWidth: MAX_CONTENT_WIDTH,
-    alignSelf: 'center',
   },
 
   // ─── Carousel ─────────────────────────────────────────────────────────────

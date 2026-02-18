@@ -10,7 +10,8 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   ActivityIndicator,
-  LayoutChangeEvent,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
@@ -33,6 +34,12 @@ type Props = {
   navigation: StackNavigationProp<RootStackParamList, 'ProductDetail'>;
   route:      RouteProp<RootStackParamList, 'ProductDetail'>;
 };
+
+// ─── Web-safe root container ──────────────────────────────────────────────────
+// SafeAreaView on web renders as an unsized div — it never constrains height,
+// so the inner ScrollView can't scroll (it just grows to fit all content).
+// Using a plain View on web, combined with the height:'100vh' style, fixes this.
+const RootContainer = Platform.OS === 'web' ? View : SafeAreaView;
 
 // ─── Image Carousel ───────────────────────────────────────────────────────────
 
@@ -146,15 +153,26 @@ const ProductDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
 
-  // Measure the rendered content width (reliable on web + native)
-  const [contentWidth, setContentWidth] = useState(0);
+  const isWeb = Platform.OS === 'web';
 
-  const onContentLayout = useCallback((e: LayoutChangeEvent) => {
-    setContentWidth(Math.floor(e.nativeEvent.layout.width));
+  // ─── Dimension listener ──────────────────────────────────────────────
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ window }) =>
+      setDimensions(window)
+    );
+    return () => sub?.remove();
   }, []);
 
-  // Fetch product
+  const contentWidth = dimensions.width;
+
+  // ─── Centered column style (web only) ───────────────────────────────
+  const centeredCol = isWeb
+    ? { width: '100%' as const, maxWidth: contentWidth, alignSelf: 'center' as const }
+    : { width: '100%' as const };
+
+  // ─── Fetch product ───────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -174,26 +192,26 @@ const ProductDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <RootContainer style={styles.safeArea}>
         <View style={styles.stateWrap}>
           <ActivityIndicator size="large" color="#3d6b22" />
           <Text style={[styles.stateText, { color: '#7a9460' }]}>Loading…</Text>
         </View>
-      </SafeAreaView>
+      </RootContainer>
     );
   }
 
   // ── Error state ────────────────────────────────────────────────────────────
   if (error || !product) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <RootContainer style={styles.safeArea}>
         <View style={styles.stateWrap}>
           <Ionicons name="alert-circle-outline" size={48} color="#b83232" />
           <Text style={[styles.stateText, { color: '#b83232' }]}>
             {error || 'Product not found'}
           </Text>
         </View>
-      </SafeAreaView>
+      </RootContainer>
     );
   }
 
@@ -208,10 +226,10 @@ const ProductDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     product.status === 'active' ? '#e6f5e4' :
     product.status === 'draft'  ? '#fff6e0' : '#f0f0f0';
 
-  // Image dimensions
   const DESKTOP_PAD = 24;
   const DESKTOP_GAP = 24;
-  const desktopColWidth = contentWidth > 0
+
+  const desktopColWidth = isDesktop
     ? Math.floor((contentWidth - DESKTOP_PAD * 2 - DESKTOP_GAP) / 2)
     : 0;
 
@@ -318,77 +336,68 @@ const ProductDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
   // ── Main render ────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.safeArea}>
-
-      {/* Top bar */}
-      <View style={styles.topBar}>
-        <View style={styles.topBarInner}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.75}
-          >
-            <Ionicons name="arrow-back" size={18} color="#2e4420" />
-            <Text style={styles.backText}>Market</Text>
-          </TouchableOpacity>
-          <Text style={styles.topBarTitle} numberOfLines={1}>
-            {product.name}
-          </Text>
-        </View>
-      </View>
-
-      {/*
-        ScrollView:
-        • style flex:1         → fills all space below the top bar
-        • scrollContent        → flexGrow:1, no alignItems (would break web scroll)
-        • contentColumn style  → alignSelf:'center' + maxWidth centres on desktop
-      */}
+    <RootContainer style={styles.safeArea}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.contentColumn} onLayout={onContentLayout}>
+        {/* Top bar */}
+        <View style={styles.topBar}>
+          <View style={centeredCol}>
+            <View style={styles.topBarInner}>
+              <TouchableOpacity
+                style={styles.backBtn}
+                onPress={() => navigation.goBack()}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="arrow-back" size={18} color="#2e4420" />
+                <Text style={styles.backText}>Market</Text>
+              </TouchableOpacity>
+              <Text style={styles.topBarTitle} numberOfLines={1}>
+                {product.name}
+              </Text>
+            </View>
+          </View>
+        </View>
 
-          {/* Wait for a real width before rendering the carousel */}
-          {contentWidth > 0 && (
-            isDesktop ? (
-              /* ══ DESKTOP: side-by-side ══ */
-              <View style={styles.desktopRow}>
-                <View style={[styles.desktopImageCol, { width: desktopColWidth }]}>
-                  <ImageCarousel
-                    images={product.images ?? []}
-                    imageWidth={desktopColWidth}
-                    imageHeight={imageHeight}
-                  />
-                </View>
-                <View style={styles.desktopContentCard}>
-                  {renderContent()}
-                </View>
+        {/* Content wrapper with centered column */}
+        <View style={centeredCol}>
+          {isDesktop ? (
+            /* ══ DESKTOP: side-by-side ══ */
+            <View style={styles.desktopRow}>
+              <View style={[styles.desktopImageCol, { width: desktopColWidth }]}>
+                <ImageCarousel
+                  images={product.images ?? []}
+                  imageWidth={desktopColWidth}
+                  imageHeight={imageHeight}
+                />
               </View>
-            ) : (
-              /* ══ MOBILE / NARROW: stacked ══ */
-              <>
-                <View style={styles.mobileImageWrap}>
-                  <ImageCarousel
-                    images={product.images ?? []}
-                    imageWidth={imageWidth}
-                    imageHeight={imageHeight}
-                  />
-                </View>
-                <View style={styles.mobileContentCard}>
-                  {renderContent()}
-                </View>
-              </>
-            )
+              <View style={styles.desktopContentCard}>
+                {renderContent()}
+              </View>
+            </View>
+          ) : (
+            /* ══ MOBILE / NARROW: stacked ══ */
+            <>
+              <View style={styles.mobileImageWrap}>
+                <ImageCarousel
+                  images={product.images ?? []}
+                  imageWidth={imageWidth}
+                  imageHeight={imageHeight}
+                />
+              </View>
+              <View style={styles.mobileContentCard}>
+                {renderContent()}
+              </View>
+            </>
           )}
 
           <View style={{ height: 40 }} />
         </View>
       </ScrollView>
-
-    </SafeAreaView>
+    </RootContainer>
   );
 };
 

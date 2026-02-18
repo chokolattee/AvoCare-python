@@ -51,7 +51,6 @@ const EMPTY_FORM: ProductFormData = {
 };
 
 // ─── Platform-aware image appender ───────────────────────────────────────────
-// Mirrors the same helper in productApi.ts so both paths stay in sync.
 async function appendImageToFormData(
   formData: FormData,
   uri: string,
@@ -189,7 +188,7 @@ const ProductScreen = () => {
         category:    product.category.id,
         price:       product.price,
         stock:       product.stock,
-        images:      product.images,   // these are https:// Cloudinary URLs
+        images:      product.images,
         nutrition:   product.nutrition,
         status:      product.status,
       });
@@ -267,7 +266,7 @@ const ProductScreen = () => {
   const removeQuickImage = (idx: number) =>
     setQuickImages((prev) => prev.filter((_, i) => i !== idx));
 
-  // ─── Nutrition handling ──────────────────────────────────────────────────
+  // ─── Nutrition handling (Edit modal) ─────────────────────────────────────
 
   const addNutritionEntry = () => {
     const newEntry: NutritionEntry = { label: '', amount: '' };
@@ -284,6 +283,27 @@ const ProductScreen = () => {
 
   const removeNutritionEntry = (index: number) =>
     setFormData((prev) => ({
+      ...prev,
+      nutrition: prev.nutrition.filter((_, i) => i !== index),
+    }));
+
+  // ─── Nutrition handling (Quick Create modal) ──────────────────────────────
+
+  const addQuickNutritionEntry = () => {
+    const newEntry: NutritionEntry = { label: '', amount: '' };
+    setQuickForm((prev) => ({ ...prev, nutrition: [...prev.nutrition, newEntry] }));
+  };
+
+  const updateQuickNutritionEntry = (index: number, field: 'label' | 'amount', value: string) => {
+    setQuickForm((prev) => {
+      const updated = [...prev.nutrition];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, nutrition: updated };
+    });
+  };
+
+  const removeQuickNutritionEntry = (index: number) =>
+    setQuickForm((prev) => ({
       ...prev,
       nutrition: prev.nutrition.filter((_, i) => i !== index),
     }));
@@ -314,8 +334,7 @@ const ProductScreen = () => {
     }
   };
 
-  // ─── Build FormData payload (shared by create & update) ──────────────────
-  // Uses appendImageToFormData which is platform-aware (blob on web, {uri} on native).
+  // ─── Build FormData payload ───────────────────────────────────────────────
 
   const buildPayload = async (
     form: ProductFormData,
@@ -405,7 +424,6 @@ const ProductScreen = () => {
 
     setUpdating(true);
     try {
-      // Split into existing Cloudinary URLs (keep) vs new local picks (upload)
       const existingImages = formData.images.filter(
         (img) => img.startsWith('http://') || img.startsWith('https://')
       );
@@ -423,7 +441,6 @@ const ProductScreen = () => {
       let response;
 
       if (selectedProduct) {
-        // UPDATE — tell backend which existing URLs to keep, then upload new ones
         payload = await buildPayload(
           formData,
           newLocalImages,
@@ -431,7 +448,6 @@ const ProductScreen = () => {
         );
         response = await updateProduct(selectedProduct.id, payload);
       } else {
-        // CREATE — all picked images are new local URIs
         payload  = await buildPayload(formData, newLocalImages);
         response = await createProduct(payload);
       }
@@ -602,6 +618,8 @@ const ProductScreen = () => {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator>
+
+              {/* Name */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Product Name <Text style={styles.required}>*</Text></Text>
                 <TextInput
@@ -612,6 +630,8 @@ const ProductScreen = () => {
                   placeholderTextColor="#9ca3af"
                 />
               </View>
+
+              {/* Description */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Description</Text>
                 <TextInput
@@ -624,6 +644,8 @@ const ProductScreen = () => {
                   numberOfLines={3}
                 />
               </View>
+
+              {/* Category */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Category <Text style={styles.required}>*</Text></Text>
                 <View style={styles.pickerContainer}>
@@ -639,6 +661,8 @@ const ProductScreen = () => {
                   </Picker>
                 </View>
               </View>
+
+              {/* Price & Stock */}
               <View style={styles.rowGroup}>
                 <View style={[styles.formGroup, styles.halfWidth]}>
                   <Text style={styles.label}>Price (₱) <Text style={styles.required}>*</Text></Text>
@@ -663,6 +687,8 @@ const ProductScreen = () => {
                   />
                 </View>
               </View>
+
+              {/* Status */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Status</Text>
                 <View style={styles.pickerContainer}>
@@ -677,6 +703,8 @@ const ProductScreen = () => {
                   </Picker>
                 </View>
               </View>
+
+              {/* Images */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>
                   Product Images{' '}
@@ -704,6 +732,45 @@ const ProductScreen = () => {
                   </ScrollView>
                 )}
               </View>
+
+              {/* Nutritional Information */}
+              <View style={styles.formGroup}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>
+                    Nutritional Information{' '}
+                    <Text style={{ color: '#9ca3af', fontSize: 12 }}>
+                      ({quickForm.nutrition.length}{' '}
+                      {quickForm.nutrition.length === 1 ? 'entry' : 'entries'})
+                    </Text>
+                  </Text>
+                  <TouchableOpacity onPress={addQuickNutritionEntry}>
+                    <Text style={styles.addLink}>+ Add Entry</Text>
+                  </TouchableOpacity>
+                </View>
+                {quickForm.nutrition.map((entry, idx) => (
+                  <View key={entry.id ?? idx} style={styles.nutritionEntry}>
+                    <TextInput
+                      style={[styles.input, styles.nutritionInput]}
+                      value={entry.label}
+                      onChangeText={(t) => updateQuickNutritionEntry(idx, 'label', t)}
+                      placeholder="e.g., Calories"
+                      placeholderTextColor="#9ca3af"
+                    />
+                    <TextInput
+                      style={[styles.input, styles.nutritionInput]}
+                      value={entry.amount}
+                      onChangeText={(t) => updateQuickNutritionEntry(idx, 'amount', t)}
+                      placeholder="e.g., 160kcal"
+                      placeholderTextColor="#9ca3af"
+                    />
+                    <TouchableOpacity onPress={() => removeQuickNutritionEntry(idx)}>
+                      <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+
+              {/* Actions */}
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.cancelButton]}
@@ -723,6 +790,7 @@ const ProductScreen = () => {
                   )}
                 </TouchableOpacity>
               </View>
+
             </ScrollView>
           </View>
         </View>

@@ -1,38 +1,61 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
+  // Root wrapper — on web we must constrain to viewport height so the
+  // inner ScrollView has a bounded parent and can actually scroll.
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+    ...(Platform.OS === 'web'
+      ? ({
+          height: '100vh',
+          maxHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        } as any)
+      : {}),
   },
-  
-  // Header (fixed at top like CommunityScreen)
+
+  // Header — must not shrink so scroll area gets remaining space
   header: {
     backgroundColor: '#5d873e',
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 20,
     alignItems: 'center',
+    ...(Platform.OS === 'web' ? ({ flexShrink: 0 } as any) : {}),
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
   },
-  
-  // Main Content
+
+  // Main Content — the ScrollView; fills remaining height and scrolls on web
   mainContent: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+    ...(Platform.OS === 'web'
+      ? ({
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          // Critical: flex children must have minHeight: 0 to shrink below
+          // their content size, otherwise the parent never clips and scroll
+          // never triggers.
+          minHeight: 0,
+        } as any)
+      : {}),
   },
-  
+
   centerColumn: {
     maxWidth: 600,
     width: '100%',
     alignSelf: 'center',
     padding: 16,
   },
-  
+
   // Search Bar
   searchBar: {
     flexDirection: 'row',
@@ -53,7 +76,7 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
   },
-  
+
   // Categories
   categoriesRow: {
     marginBottom: 16,
@@ -83,12 +106,12 @@ export const styles = StyleSheet.create({
   categoryTextActive: {
     color: '#fff',
   },
-  
+
   // Analyses Container
   analysesContainer: {
     marginTop: 4,
   },
-  
+
   // Analysis Card
   analysisCard: {
     backgroundColor: '#fff',
@@ -98,7 +121,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e8e8e8',
   },
-  
+
   // Card Header
   cardHeader: {
     flexDirection: 'row',
@@ -129,7 +152,7 @@ export const styles = StyleSheet.create({
   deleteButton: {
     padding: 8,
   },
-  
+
   // Images
   imagesContainer: {
     marginBottom: 12,
@@ -157,7 +180,7 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  
+
   // Results
   resultsContainer: {
     backgroundColor: '#f9f9f9',
@@ -195,7 +218,7 @@ export const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  
+
   // Recommendation
   recommendationContainer: {
     backgroundColor: '#e8f5e9',
@@ -221,7 +244,7 @@ export const styles = StyleSheet.create({
     color: '#333',
     lineHeight: 20,
   },
-  
+
   // Details
   detailsContainer: {
     flexDirection: 'row',
@@ -245,7 +268,7 @@ export const styles = StyleSheet.create({
     marginLeft: 6,
     flexShrink: 1,
   },
-  
+
   // Notes
   notesContainer: {
     backgroundColor: '#fff8e1',
@@ -266,7 +289,7 @@ export const styles = StyleSheet.create({
     color: '#333',
     lineHeight: 20,
   },
-  
+
   // Probabilities
   probabilitiesContainer: {
     marginTop: 8,
@@ -313,7 +336,7 @@ export const styles = StyleSheet.create({
     textAlign: 'right',
     flexShrink: 0,
   },
-  
+
   // Empty State
   emptyContainer: {
     alignItems: 'center',
@@ -328,7 +351,7 @@ export const styles = StyleSheet.create({
     marginTop: 20,
     lineHeight: 24,
   },
-  
+
   // Login Prompt
   loginPromptContainer: {
     alignItems: 'center',

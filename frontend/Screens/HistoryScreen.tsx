@@ -11,6 +11,7 @@ import {
   Image,
   RefreshControl,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
@@ -48,7 +49,7 @@ export interface Analysis {
   all_probabilities: Record<string, number>;
   original_image_url?: string;
   annotated_image_url?: string;
-  
+
   ripeness?: {
     ripeness: string;
     ripeness_level: number;
@@ -60,7 +61,7 @@ export interface Analysis {
     bbox: number[];
     color_metrics: Record<string, number>;
   };
-  
+
   leaf?: {
     class: string;
     confidence: number;
@@ -68,7 +69,7 @@ export interface Analysis {
     detections: any[];
     recommendation: string;
   };
-  
+
   disease?: {
     class: string;
     confidence: number;
@@ -87,29 +88,66 @@ const categories = [
   { key: 'fruit_disease', label: 'Disease', icon: 'warning-outline' },
 ];
 
+/**
+ * Parse a datetime string from the backend into a UTC timestamp (ms).
+ *
+ * Python's datetime.isoformat() produces strings like:
+ *   "2024-01-15T10:30:45.123456"   ← no timezone suffix
+ *   "2024-01-15T10:30:45"          ← no microseconds, no suffix
+ *
+ * Browsers treat strings WITHOUT a timezone offset as LOCAL time, not UTC.
+ * Appending "Z" forces correct UTC interpretation in all browsers.
+ */
+function parseUTCDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+
+  // Already has timezone info — use as-is
+  if (dateStr.endsWith('Z') || dateStr.includes('+') || /\d{2}:\d{2}$/.test(dateStr.slice(-6))) {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // No timezone suffix — backend sent UTC without 'Z', so append it
+  const d = new Date(dateStr + 'Z');
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function timeAgo(dateStr: string): string {
   try {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return 'recently';
-    const now = new Date();
-    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    const date = parseUTCDate(dateStr);
+    if (!date) return 'recently';
+
+    const nowMs = Date.now(); // always UTC ms
+    const dateMs = date.getTime(); // now correctly UTC ms
+    const seconds = Math.floor((nowMs - dateMs) / 1000);
+
     if (seconds < 0) return 'just now';
     if (seconds < 60) return 'just now';
+
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
+
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+
     const days = Math.floor(hours / 24);
     if (days < 7) return days === 1 ? '1 day ago' : `${days} days ago`;
+
     const weeks = Math.floor(days / 7);
     if (weeks < 4) return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
-    if (days < 365) {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return `${months[date.getMonth()]} ${date.getDate()}`;
+
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    // Within the same year — show "Jan 15"
+    const nowYear = new Date().getUTCFullYear();
+    if (date.getUTCFullYear() === nowYear) {
+      return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
     }
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
-  } catch (error) {
+
+    // Older — show "Jan 15, 2023"
+    return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
+  } catch {
     return 'recently';
   }
 }
@@ -147,6 +185,10 @@ function getConfidenceBadgeColor(confidence: number): string {
   return '#FF922B';
 }
 
+// On web, SafeAreaView renders as a plain div without height constraints,
+// which prevents the inner ScrollView from scrolling. Use View on web instead.
+const RootContainer = Platform.OS === 'web' ? View : SafeAreaView;
+
 const HistoryScreen: React.FC<Props> = ({ navigation }) => {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -154,15 +196,14 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  
+
   const { width: windowWidth } = useWindowDimensions();
 
   useEffect(() => {
     const checkLoginStatus = async () => {
       try {
         const token = await AsyncStorage.getItem('jwt') || await AsyncStorage.getItem('token');
-        const isUserLoggedIn = !!token;
-        setIsLoggedIn(isUserLoggedIn);
+        setIsLoggedIn(!!token);
       } catch (err) {
         console.error('Failed to check login status:', err);
         setIsLoggedIn(false);
@@ -181,14 +222,12 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
       }
 
       setLoading(true);
-      const url = selectedCategory === 'all' 
-        ? `${HISTORY_URL}/all` 
+      const url = selectedCategory === 'all'
+        ? `${HISTORY_URL}/all`
         : `${HISTORY_URL}/${selectedCategory}`;
-      
+
       const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (res.status === 401) {
@@ -198,11 +237,9 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
       }
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      
+
       const data = await res.json();
-      const analysisArray = Array.isArray(data) ? data : data.analyses || [];
-      setAnalyses(analysisArray);
-      
+      setAnalyses(Array.isArray(data) ? data : data.analyses || []);
     } catch (err) {
       console.error('Failed to fetch analyses:', err);
       Alert.alert('Error', 'Failed to load analysis history.');
@@ -213,23 +250,18 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
   }, [selectedCategory]);
 
   useEffect(() => {
-    if (isLoggedIn) {
-      fetchAnalyses();
-    }
+    if (isLoggedIn) fetchAnalyses();
   }, [fetchAnalyses, isLoggedIn]);
 
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      const checkAndRefresh = async () => {
-        const token = await AsyncStorage.getItem('jwt') || await AsyncStorage.getItem('token');
-        if (token) {
-          setIsLoggedIn(true);
-          fetchAnalyses();
-        } else {
-          setIsLoggedIn(false);
-        }
-      };
-      checkAndRefresh();
+    const unsubscribe = navigation.addListener('focus', async () => {
+      const token = await AsyncStorage.getItem('jwt') || await AsyncStorage.getItem('token');
+      if (token) {
+        setIsLoggedIn(true);
+        fetchAnalyses();
+      } else {
+        setIsLoggedIn(false);
+      }
     });
     return unsubscribe;
   }, [navigation, fetchAnalyses]);
@@ -253,13 +285,9 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
               const token = await AsyncStorage.getItem('jwt') || await AsyncStorage.getItem('token');
               const res = await fetch(`${HISTORY_URL}/${analysisId}`, {
                 method: 'DELETE',
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
+                headers: { Authorization: `Bearer ${token}` },
               });
-
               if (!res.ok) throw new Error('Failed to delete analysis');
-
               await fetchAnalyses();
               Alert.alert('Success', 'Analysis deleted successfully');
             } catch (err) {
@@ -272,32 +300,26 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  const getFilteredAnalyses = () => {
-    return analyses.filter((analysis) => {
-      const matchesSearch = searchQuery === '' || 
-        analysis.notes.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        getAnalysisTypeLabel(analysis.analysis_type).toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesSearch;
-    });
-  };
-
-  const filteredAnalyses = getFilteredAnalyses();
+  const filteredAnalyses = analyses.filter((analysis) =>
+    searchQuery === '' ||
+    analysis.notes.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    getAnalysisTypeLabel(analysis.analysis_type).toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const getImageDimensions = () => {
     const maxContentWidth = Math.min(windowWidth - 32, 600);
     const imageWidth = Math.min(maxContentWidth * 0.85, 500);
-    const imageHeight = imageWidth * 0.7;
-    return { width: imageWidth, height: imageHeight };
+    return { width: imageWidth, height: imageWidth * 0.7 };
   };
 
   const renderAnalysisCard = (analysis: Analysis) => {
     const typeColor = getAnalysisTypeColor(analysis.analysis_type);
     const imageDimensions = getImageDimensions();
-    
+
     let primaryResult = '';
     let confidence = 0;
     let recommendation = '';
-    
+
     if (analysis.analysis_type === 'ripeness' && analysis.ripeness) {
       primaryResult = `${analysis.ripeness.ripeness} (Level ${analysis.ripeness.ripeness_level})`;
       confidence = analysis.ripeness.confidence;
@@ -316,30 +338,20 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
       <View key={analysis.id} style={styles.analysisCard}>
         <View style={styles.cardHeader}>
           <View style={[styles.typeIconContainer, { backgroundColor: typeColor + '20' }]}>
-            <Ionicons 
-              name={getAnalysisTypeIcon(analysis.analysis_type) as any} 
-              size={22} 
-              color={typeColor} 
-            />
+            <Ionicons name={getAnalysisTypeIcon(analysis.analysis_type) as any} size={22} color={typeColor} />
           </View>
           <View style={styles.cardHeaderInfo}>
-            <Text style={styles.analysisType}>
-              {getAnalysisTypeLabel(analysis.analysis_type)}
-            </Text>
+            <Text style={styles.analysisType}>{getAnalysisTypeLabel(analysis.analysis_type)}</Text>
             <Text style={styles.timeAgo}>{timeAgo(analysis.created_at)}</Text>
           </View>
-          
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => handleDeleteAnalysis(analysis.id)}
-          >
+          <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteAnalysis(analysis.id)}>
             <Ionicons name="trash-outline" size={20} color="#e74c3c" />
           </TouchableOpacity>
         </View>
 
         {(analysis.original_image_url || analysis.annotated_image_url) && (
-          <ScrollView 
-            horizontal 
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.imagesContainer}
             snapToInterval={imageDimensions.width + 12}
@@ -347,12 +359,9 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
           >
             {analysis.original_image_url && (
               <View style={styles.imageWrapper}>
-                <Image 
-                  source={{ uri: analysis.original_image_url }} 
-                  style={[
-                    styles.analysisImage,
-                    { width: imageDimensions.width, height: imageDimensions.height }
-                  ]}
+                <Image
+                  source={{ uri: analysis.original_image_url }}
+                  style={[styles.analysisImage, { width: imageDimensions.width, height: imageDimensions.height }]}
                   resizeMode="cover"
                 />
                 <View style={styles.imageLabel}>
@@ -362,12 +371,9 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
             )}
             {analysis.annotated_image_url && (
               <View style={styles.imageWrapper}>
-                <Image 
-                  source={{ uri: analysis.annotated_image_url }} 
-                  style={[
-                    styles.analysisImage,
-                    { width: imageDimensions.width, height: imageDimensions.height }
-                  ]}
+                <Image
+                  source={{ uri: analysis.annotated_image_url }}
+                  style={[styles.analysisImage, { width: imageDimensions.width, height: imageDimensions.height }]}
                   resizeMode="cover"
                 />
                 <View style={styles.imageLabel}>
@@ -381,27 +387,16 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.resultsContainer}>
           <View style={styles.resultRow}>
             <Text style={styles.resultLabel}>Result:</Text>
-            <Text 
-              style={[styles.resultValue, { color: typeColor }]}
-              numberOfLines={2}
-              ellipsizeMode="tail"
-            >
+            <Text style={[styles.resultValue, { color: typeColor }]} numberOfLines={2} ellipsizeMode="tail">
               {primaryResult}
             </Text>
           </View>
-
           <View style={styles.resultRow}>
             <Text style={styles.resultLabel}>Confidence:</Text>
-            <View style={[
-              styles.confidenceBadge, 
-              { backgroundColor: getConfidenceBadgeColor(confidence) }
-            ]}>
-              <Text style={styles.confidenceText}>
-                {(confidence * 100).toFixed(1)}%
-              </Text>
+            <View style={[styles.confidenceBadge, { backgroundColor: getConfidenceBadgeColor(confidence) }]}>
+              <Text style={styles.confidenceText}>{(confidence * 100).toFixed(1)}%</Text>
             </View>
           </View>
-
           {analysis.count > 1 && (
             <View style={styles.resultRow}>
               <Text style={styles.resultLabel}>Detections:</Text>
@@ -424,21 +419,15 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.detailsContainer}>
             <View style={styles.detailRow}>
               <Ionicons name="color-palette-outline" size={16} color="#666" />
-              <Text style={styles.detailText} numberOfLines={1}>
-                {analysis.ripeness.color}
-              </Text>
+              <Text style={styles.detailText} numberOfLines={1}>{analysis.ripeness.color}</Text>
             </View>
             <View style={styles.detailRow}>
               <Ionicons name="hand-left-outline" size={16} color="#666" />
-              <Text style={styles.detailText} numberOfLines={1}>
-                {analysis.ripeness.texture}
-              </Text>
+              <Text style={styles.detailText} numberOfLines={1}>{analysis.ripeness.texture}</Text>
             </View>
             <View style={styles.detailRow}>
               <Ionicons name="time-outline" size={16} color="#666" />
-              <Text style={styles.detailText} numberOfLines={1}>
-                {analysis.ripeness.days_to_ripe}
-              </Text>
+              <Text style={styles.detailText} numberOfLines={1}>{analysis.ripeness.days_to_ripe}</Text>
             </View>
           </View>
         )}
@@ -457,27 +446,18 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
               .sort(([, a], [, b]) => (b as number) - (a as number))
               .map(([key, value]) => (
                 <View key={key} style={styles.probabilityRow}>
-                  <Text 
-                    style={styles.probabilityLabel}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
+                  <Text style={styles.probabilityLabel} numberOfLines={1} ellipsizeMode="tail">
                     {key}:
                   </Text>
                   <View style={styles.probabilityBar}>
-                    <View 
+                    <View
                       style={[
-                        styles.probabilityFill, 
-                        { 
-                          width: `${(value as number) * 100}%`,
-                          backgroundColor: typeColor
-                        }
-                      ]} 
+                        styles.probabilityFill,
+                        { width: `${(value as number) * 100}%`, backgroundColor: typeColor },
+                      ]}
                     />
                   </View>
-                  <Text style={styles.probabilityValue}>
-                    {((value as number) * 100).toFixed(1)}%
-                  </Text>
+                  <Text style={styles.probabilityValue}>{((value as number) * 100).toFixed(1)}%</Text>
                 </View>
               ))}
           </View>
@@ -488,13 +468,13 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
 
   if (!isLoggedIn) {
     return (
-      <SafeAreaView style={styles.container}>
+      <RootContainer style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Analysis History</Text>
         </View>
-        
-        <ScrollView 
+        <ScrollView
           style={styles.mainContent}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 32 }}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.centerColumn}>
@@ -513,26 +493,28 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </View>
         </ScrollView>
-      </SafeAreaView>
+      </RootContainer>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <RootContainer style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Analysis History</Text>
       </View>
-
-      <ScrollView 
+      <ScrollView
         style={styles.mainContent}
+        contentContainerStyle={{ paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={['#5d873e']}
-            tintColor="#5d873e"
-          />
+          Platform.OS !== 'web' ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#5d873e']}
+              tintColor="#5d873e"
+            />
+          ) : undefined
         }
       >
         <View style={styles.centerColumn}>
@@ -552,18 +534,15 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
             )}
           </View>
 
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false} 
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
             style={styles.categoriesRow}
           >
             {categories.map((cat) => (
               <TouchableOpacity
                 key={cat.key}
-                style={[
-                  styles.categoryButton,
-                  selectedCategory === cat.key && styles.categoryButtonActive,
-                ]}
+                style={[styles.categoryButton, selectedCategory === cat.key && styles.categoryButtonActive]}
                 onPress={() => setSelectedCategory(cat.key)}
               >
                 <Ionicons
@@ -571,12 +550,7 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
                   size={14}
                   color={selectedCategory === cat.key ? '#fff' : '#5d873e'}
                 />
-                <Text
-                  style={[
-                    styles.categoryText,
-                    selectedCategory === cat.key && styles.categoryTextActive,
-                  ]}
-                >
+                <Text style={[styles.categoryText, selectedCategory === cat.key && styles.categoryTextActive]}>
                   {cat.label}
                 </Text>
               </TouchableOpacity>
@@ -591,8 +565,8 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
                 <View style={styles.emptyContainer}>
                   <Ionicons name="analytics-outline" size={64} color="#ccc" />
                   <Text style={styles.emptyText}>
-                    {searchQuery 
-                      ? 'No analyses match your search' 
+                    {searchQuery
+                      ? 'No analyses match your search'
                       : 'No analyses yet. Start scanning to build your history!'}
                   </Text>
                 </View>
@@ -603,7 +577,7 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </RootContainer>
   );
 };
 
