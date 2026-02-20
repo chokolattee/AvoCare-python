@@ -11,6 +11,9 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE_URL } from '../../config/api';
+
+const API_URL = `${API_BASE_URL}/api/users`;
 
 // Define navigation types
 type RootStackParamList = {
@@ -40,8 +43,6 @@ interface Props {
   navigation: VerifyEmailScreenNavigationProp;
   route: VerifyEmailScreenRouteProp;
 }
-
-const API_URL = 'http://192.168.0.106:8081/api/users';
 
 const VerifyEmailScreen: React.FC<Props> = ({ navigation, route }) => {
   const [loading, setLoading] = useState(true);
@@ -75,6 +76,7 @@ const VerifyEmailScreen: React.FC<Props> = ({ navigation, route }) => {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({ token })
       });

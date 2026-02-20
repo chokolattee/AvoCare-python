@@ -77,6 +77,7 @@ const UsersScreen = () => {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
         },
       });
 
@@ -146,6 +147,7 @@ const UsersScreen = () => {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
           role: editRole,

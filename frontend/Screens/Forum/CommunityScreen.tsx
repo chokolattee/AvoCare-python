@@ -31,7 +31,7 @@ type CommunityStackParamList = {
 type RootStackParamList = {
   MainTabs: undefined;
   AuthScreen: undefined;
-  Chatbot: undefined;
+  // Chatbot: undefined;
 };
 
 type CommunityScreenNavigationProp = StackNavigationProp<CommunityStackParamList, 'Community'>;
@@ -237,7 +237,11 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
   const fetchPosts = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(FORUM_URL);
+      const res = await fetch(FORUM_URL, {
+  headers: {
+    'ngrok-skip-browser-warning': 'true',
+  },
+});
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: ForumPost[] = await res.json();
       
@@ -249,6 +253,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
         const archivedRes = await fetch(`${FORUM_URL}/archived`, {
           headers: {
             Authorization: `Bearer ${token}`,
+            'ngrok-skip-browser-warning': 'true',
           },
         });
         if (archivedRes.ok) {
@@ -380,6 +385,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
         body: formData,
       });
@@ -436,6 +442,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
       });
 
@@ -457,6 +464,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
       });
 
@@ -492,6 +500,7 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
       });
       const data = await res.json();
@@ -550,9 +559,9 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
 
   const filteredPosts = getFilteredPosts();
 
-  const handleChatbotPress = () => {
-    navigation.getParent()?.navigate('Chatbot' as never);
-  };
+  // const handleChatbotPress = () => {
+  //   navigation.getParent()?.navigate('Chatbot' as never);
+  // };
 
   const renderPost = (post: ForumPost, showActions: boolean = false) => {
     const edited = wasEdited(post.created_at, post.updated_at);
@@ -964,12 +973,12 @@ const CommunityScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </ScrollView>
 
-      <TouchableOpacity style={styles.chatbotButton} onPress={handleChatbotPress}>
+      {/* <TouchableOpacity style={styles.chatbotButton} onPress={handleChatbotPress}>
         <Ionicons name="chatbubbles" size={28} color="#fff" />
         <View style={styles.chatbotBadge}>
           <Ionicons name="sparkles" size={12} color="#5d873e" />
         </View>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
     </SafeAreaView>
   );
 };

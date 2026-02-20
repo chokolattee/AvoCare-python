@@ -65,8 +65,17 @@ def create_app():
         print(f"⚠️  Profanity filter initialization warning: {str(e)}\n")
     # ============================================================================
     
-    # ENHANCED: Enable CORS with proper configuration for production
-    CORS(app)
+    # ENHANCED: Enable CORS with proper configuration for ngrok and production
+    CORS(app, 
+     resources={r"/*": {"origins": [
+         "http://localhost:8081",
+         "https://subcallosal-droughty-silva.ngrok-free.dev"
+     ]}},
+     allow_headers=["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+     supports_credentials=True,
+     expose_headers=["Content-Type", "Authorization"])
+    
     
     # Register blueprints
     from routes.user_routes import user_routes

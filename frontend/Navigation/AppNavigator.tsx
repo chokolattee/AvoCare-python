@@ -1,8 +1,19 @@
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigationState } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { View, StyleSheet, Platform, Modal, ScrollView, Animated, TouchableOpacity, Text, Dimensions, Alert } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  Platform,
+  Modal,
+  ScrollView,
+  Animated,
+  TouchableOpacity,
+  Text,
+  Dimensions,
+  Alert,
+} from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
@@ -17,16 +28,17 @@ import MarketScreen from '../Screens/MarketScreen';
 import AuthScreen from '../Screens/Auth/AuthScreen';
 import ProfileScreen from '../Screens/Auth/ProfileScreen';
 import VerifyEmailScreen from '../Screens/Auth/VerifyEmailScreen';
-import ChatbotScreen from '../Screens/Forum/ChatbotScreen';
+// import ChatbotScreen from '../Screens/Forum/ChatbotScreen';
 import PostDetailScreen from '../Screens/Forum/PostDetailScreen';
 import EditPostScreen from '../Screens/Forum/EditPostScreen';
 import AboutScreen from '../Screens/AboutScreen';
-import AdminNavigator from './AdminNavigator'; 
+import AdminNavigator from './AdminNavigator';
 import HistoryScreen from '../Screens/HistoryScreen';
 import ProductDetailScreen from '../Screens/ProductDetailScreen';
+import FloatingChatbot from '../Components/FloatingChatbot';
 
 // ==========================================
-// TYPE DEFINITIONS - UPDATED FOR NESTED NAVIGATION
+// TYPE DEFINITIONS
 // ==========================================
 
 export type TabParamList = {
@@ -40,22 +52,20 @@ export type TabParamList = {
 export type CommunityStackParamList = {
   Community: undefined;
   PostDetail: { postId: string };
-  EditPost: { postId: string; title: string; content: string; category: string; imageUrl?: string };
+  EditPost: {
+    postId: string;
+    title: string;
+    content: string;
+    category: string;
+    imageUrl?: string;
+  };
 };
 
-// UPDATED: Fixed navigation types
 export type RootStackParamList = {
-  MainTabs: {
-    screen?: string;
-  } | undefined;
+  MainTabs: { screen?: string } | undefined;
   Notifications: undefined;
-  AuthScreen: {
-    emailVerified?: boolean;
-    message?: string;
-  } | undefined;
-  VerifyEmail: { 
-    token: string;
-  };
+  AuthScreen: { emailVerified?: boolean; message?: string } | undefined;
+  VerifyEmail: { token: string };
   Chatbot: undefined;
   About: undefined;
   Admin: undefined;
@@ -67,12 +77,23 @@ const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createStackNavigator<RootStackParamList>();
 const CommunityStackNav = createStackNavigator<CommunityStackParamList>();
 
-// Mobile Menu Modal Component
-function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; onClose: () => void; navigation: any }) {
+// ==========================================
+// MOBILE MENU MODAL
+// ==========================================
+
+function MobileMenuModal({
+  visible,
+  onClose,
+  navigation,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  navigation: any;
+}) {
   const [screenWidth, setScreenWidth] = useState(getScreenWidth());
   const [user, setUser] = useState<any>(null);
   const slideAnim = useRef(new Animated.Value(-screenWidth * 0.75)).current;
-  
+
   const allMenuItems = [
     { name: 'Home', route: 'Home', icon: 'home-outline' },
     { name: 'Community', route: 'CommunityStack', icon: 'people-outline' },
@@ -81,56 +102,40 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
     { name: 'About', route: 'About', icon: 'information-circle-outline' },
   ];
 
-  // Filter menu items based on user authentication
-  const menuItems = allMenuItems.filter(item => 
-    !item.requiresAuth || (item.requiresAuth && user)
+  const menuItems = allMenuItems.filter(
+    (item) => !item.requiresAuth || (item.requiresAuth && user)
   );
 
-  // Load user data when modal becomes visible
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const token = await AsyncStorage.getItem('jwt') || await AsyncStorage.getItem('token');
+        const token =
+          (await AsyncStorage.getItem('jwt')) ||
+          (await AsyncStorage.getItem('token'));
         const userData = await AsyncStorage.getItem('user');
-        
-        if (token && userData) {
-          setUser(JSON.parse(userData));
-        } else {
-          setUser(null);
-        }
+        if (token && userData) setUser(JSON.parse(userData));
+        else setUser(null);
       } catch (error) {
         console.error('Error loading user:', error);
         setUser(null);
       }
     };
-
-    if (visible) {
-      loadUser();
-    }
+    if (visible) loadUser();
   }, [visible]);
 
   useEffect(() => {
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
-      setScreenWidth(window.width);
-    });
-    
+    const subscription = Dimensions.addEventListener('change', ({ window }) =>
+      setScreenWidth(window.width)
+    );
     return () => subscription?.remove();
   }, []);
 
   useEffect(() => {
-    if (visible) {
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(slideAnim, {
-        toValue: -screenWidth * 0.75,
-        duration: 250,
-        useNativeDriver: true,
-      }).start();
-    }
+    Animated.timing(slideAnim, {
+      toValue: visible ? 0 : -screenWidth * 0.75,
+      duration: visible ? 300 : 250,
+      useNativeDriver: true,
+    }).start();
   }, [visible, screenWidth]);
 
   const handleNavigate = (route: string) => {
@@ -138,10 +143,7 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
     if (tabScreens.includes(route)) {
       const { CommonActions } = require('@react-navigation/native');
       navigation.dispatch(
-        CommonActions.navigate({
-          name: 'MainTabs',
-          params: { screen: route },
-        })
+        CommonActions.navigate({ name: 'MainTabs', params: { screen: route } })
       );
     } else {
       navigation.navigate(route);
@@ -155,21 +157,21 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
     <Modal
       visible={visible}
       animationType="fade"
-      transparent={true}
+      transparent
       onRequestClose={onClose}
     >
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.modalOverlay}
         activeOpacity={1}
         onPress={onClose}
       >
-        <Animated.View 
+        <Animated.View
           style={[
             styles.modalContent,
-            { transform: [{ translateX: slideAnim }] }
+            { transform: [{ translateX: slideAnim }] },
           ]}
         >
-          <TouchableOpacity 
+          <TouchableOpacity
             activeOpacity={1}
             onPress={(e) => e.stopPropagation()}
             style={{ flex: 1 }}
@@ -180,7 +182,7 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
                 <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.modalBody}>
               {menuItems.map((item, index) => (
                 <TouchableOpacity
@@ -202,7 +204,10 @@ function MobileMenuModal({ visible, onClose, navigation }: { visible: boolean; o
   );
 }
 
-// Custom Header
+// ==========================================
+// CUSTOM HEADER
+// ==========================================
+
 function CustomHeader({ navigation }: { navigation: any }) {
   const [mobileMenuVisible, setMobileMenuVisible] = useState(false);
   const [screenWidth, setScreenWidth] = useState(getScreenWidth());
@@ -211,20 +216,16 @@ function CustomHeader({ navigation }: { navigation: any }) {
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({ window }) => {
       setScreenWidth(window.width);
-      if (window.width >= 768 && mobileMenuVisible) {
-        setMobileMenuVisible(false);
-      }
+      if (window.width >= 768 && mobileMenuVisible) setMobileMenuVisible(false);
     });
-    
     return () => subscription?.remove();
   }, [mobileMenuVisible]);
 
   return (
     <>
       <Header onMenuPress={isMobile ? () => setMobileMenuVisible(true) : undefined} />
-      
       {isMobile && (
-        <MobileMenuModal 
+        <MobileMenuModal
           visible={mobileMenuVisible}
           onClose={() => setMobileMenuVisible(false)}
           navigation={navigation}
@@ -234,14 +235,13 @@ function CustomHeader({ navigation }: { navigation: any }) {
   );
 }
 
-// Community Stack Navigator
+// ==========================================
+// COMMUNITY STACK
+// ==========================================
+
 function CommunityStackNavigator() {
   return (
-    <CommunityStackNav.Navigator
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
+    <CommunityStackNav.Navigator screenOptions={{ headerShown: false }}>
       <CommunityStackNav.Screen name="Community" component={CommunityScreen} />
       <CommunityStackNav.Screen name="PostDetail" component={PostDetailScreen} />
       <CommunityStackNav.Screen name="EditPost" component={EditPostScreen} />
@@ -249,112 +249,159 @@ function CommunityStackNavigator() {
   );
 }
 
-// Main Tab Navigator
+// ==========================================
+// FLOATING CHATBOT WRAPPER
+//
+// Lives INSIDE the Tab navigator tree (as a
+// sibling of Tab.Navigator inside a View).
+// This ensures useNavigationState() works
+// without throwing the "not inside navigator"
+// error. The chatbot hides itself on Scan
+// and when user is not authenticated.
+// ==========================================
+
+function FloatingChatbotWrapper() {
+  const [user, setUser] = useState<any>(null);
+  const [activeTabName, setActiveTabName] = useState('');
+
+  // Safely read navigation state — may be undefined on first render
+  let navTabName = '';
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    navTabName = useNavigationState((state) => {
+      if (!state || !state.routes || state.index == null) return '';
+      const route = state.routes[state.index];
+      return route?.name ?? '';
+    }) ?? '';
+  } catch {
+    navTabName = '';
+  }
+
+  // Sync to state so downstream effects can depend on it safely
+  useEffect(() => {
+    setActiveTabName(navTabName);
+  }, [navTabName]);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const token =
+          (await AsyncStorage.getItem('jwt')) ||
+          (await AsyncStorage.getItem('token'));
+        const userData = await AsyncStorage.getItem('user');
+        if (token && userData) setUser(JSON.parse(userData));
+        else setUser(null);
+      } catch {
+        setUser(null);
+      }
+    };
+    loadUser();
+  }, [activeTabName]);
+
+  return <FloatingChatbot currentRoute={activeTabName} user={user} />;
+}
+
+// ==========================================
+// MAIN TAB NAVIGATOR
+//
+// Wrapped in a plain View so FloatingChatbot
+// can use absolute positioning to overlay
+// all tab screens. FloatingChatbotWrapper
+// is a sibling of Tab.Navigator — inside
+// the navigator tree but outside any screen.
+// ==========================================
+
 function MainTabNavigator() {
   return (
-    <Tab.Navigator
-      screenOptions={({ route, navigation }) => ({
-        header: () => <CustomHeader navigation={navigation} />,
-        headerStyle: {
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 0,
-        },
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap;
+    <View style={{ flex: 1 }}>
+      <Tab.Navigator
+        screenOptions={({ route, navigation }) => ({
+          header: () => <CustomHeader navigation={navigation} />,
+          headerStyle: {
+            elevation: 0,
+            shadowOpacity: 0,
+            borderBottomWidth: 0,
+          },
+          tabBarIcon: ({ focused, color, size }) => {
+            let iconName: keyof typeof Ionicons.glyphMap;
 
-          switch (route.name) {
-            case 'Home':
-              iconName = focused ? 'home' : 'home-outline';
-              break;
-            case 'CommunityStack':
-              iconName = focused ? 'people' : 'people-outline';
-              break;
-            case 'Scan':
-              iconName = 'camera';
-              break;
-            case 'Market':
-              iconName = focused ? 'storefront' : 'storefront-outline';
-              break;
-            case 'Profile':
-              iconName = focused ? 'person' : 'person-outline';
-              break;
-            default:
-              iconName = 'home-outline';
-          }
-          
-          if (route.name === 'Scan') {
-            return (
-              <View style={styles.scanButtonContainer}>
-                <View style={styles.scanButton}>
-                  <Ionicons name={iconName} size={32} color="#fff" />
+            switch (route.name) {
+              case 'Home':
+                iconName = focused ? 'home' : 'home-outline';
+                break;
+              case 'CommunityStack':
+                iconName = focused ? 'people' : 'people-outline';
+                break;
+              case 'Scan':
+                iconName = 'camera';
+                break;
+              case 'Market':
+                iconName = focused ? 'storefront' : 'storefront-outline';
+                break;
+              case 'Profile':
+                iconName = focused ? 'person' : 'person-outline';
+                break;
+              default:
+                iconName = 'home-outline';
+            }
+
+            if (route.name === 'Scan') {
+              return (
+                <View style={styles.scanButtonContainer}>
+                  <View style={styles.scanButton}>
+                    <Ionicons name={iconName} size={32} color="#fff" />
+                  </View>
                 </View>
-              </View>
-            );
-          }
+              );
+            }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: '#7FA66D',
-        tabBarInactiveTintColor: '#999',
-        tabBarStyle: {
-          display: 'none',
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500',
-          marginTop: 4,
-        },
-        tabBarItemStyle: {
-          paddingVertical: 5,
-        },
-      })}
-    >
-      <Tab.Screen 
-        name="Home" 
-        component={HomeScreen}
-        options={{ 
-          title: 'Home',
-          tabBarLabel: 'Home',
-        }}
-      />
-      <Tab.Screen 
-        name="CommunityStack"
-        component={CommunityStackNavigator}
-        options={{ 
-          title: 'Community',
-          tabBarLabel: 'Community',
-        }}
-      />
-      <Tab.Screen 
-        name="Scan" 
-        component={ScanScreen}
-        options={{
-          title: 'Scan',
-          tabBarLabel: '',
-        }}
-      />
-      <Tab.Screen 
-        name="Market" 
-        component={MarketScreen}
-        options={{ 
-          title: 'Market',
-          tabBarLabel: 'Market',
-        }}
-      />
-      <Tab.Screen 
-        name="Profile" 
-        component={ProfileScreen}
-        options={{ 
-          title: 'Profile',
-          tabBarLabel: 'Profile',
-        }}
-      />
-    </Tab.Navigator>
+            return <Ionicons name={iconName} size={size} color={color} />;
+          },
+          tabBarActiveTintColor: '#7FA66D',
+          tabBarInactiveTintColor: '#999',
+          tabBarStyle: { display: 'none' },
+          tabBarLabelStyle: { fontSize: 11, fontWeight: '500', marginTop: 4 },
+          tabBarItemStyle: { paddingVertical: 5 },
+        })}
+      >
+        <Tab.Screen
+          name="Home"
+          component={HomeScreen}
+          options={{ title: 'Home', tabBarLabel: 'Home' }}
+        />
+        <Tab.Screen
+          name="CommunityStack"
+          component={CommunityStackNavigator}
+          options={{ title: 'Community', tabBarLabel: 'Community' }}
+        />
+        <Tab.Screen
+          name="Scan"
+          component={ScanScreen}
+          options={{ title: 'Scan', tabBarLabel: '' }}
+        />
+        <Tab.Screen
+          name="Market"
+          component={MarketScreen}
+          options={{ title: 'Market', tabBarLabel: 'Market' }}
+        />
+        <Tab.Screen
+          name="Profile"
+          component={ProfileScreen}
+          options={{ title: 'Profile', tabBarLabel: 'Profile' }}
+        />
+      </Tab.Navigator>
+
+      {/* Floating chatbot overlays all tab screens via absolute positioning.
+          Hidden automatically on Scan tab and for unauthenticated users. */}
+      <FloatingChatbotWrapper />
+    </View>
   );
 }
 
-// Root Stack Navigator
+// ==========================================
+// ROOT NAVIGATOR
+// ==========================================
+
 export default function AppNavigator() {
   const [initialRoute, setInitialRoute] = useState<'MainTabs' | 'Admin'>('MainTabs');
   const [isReady, setIsReady] = useState(false);
@@ -368,9 +415,7 @@ export default function AppNavigator() {
       const userStr = await AsyncStorage.getItem('user');
       if (userStr) {
         const user = JSON.parse(userStr);
-        if (user.role === 'admin') {
-          setInitialRoute('Admin');
-        }
+        if (user.role === 'admin') setInitialRoute('Admin');
       }
     } catch (error) {
       console.error('Error checking user role:', error);
@@ -379,11 +424,8 @@ export default function AppNavigator() {
     }
   };
 
-  if (!isReady) {
-    return null;
-  }
+  if (!isReady) return null;
 
-  // Deep linking configuration - UPDATED with correct paths
   const linking = {
     prefixes: ['avocare://', 'http://localhost:8081', 'https://avocare.app'],
     config: {
@@ -400,15 +442,13 @@ export default function AppNavigator() {
         },
         VerifyEmail: {
           path: 'verify-email',
-          parse: {
-            token: (token: string) => token,
-          },
+          parse: { token: (token: string) => token },
         },
         AuthScreen: {
           path: 'auth',
           parse: {
-            emailVerified: (emailVerified: string) => emailVerified === 'true',
-            message: (message: string) => message,
+            emailVerified: (v: string) => v === 'true',
+            message: (m: string) => m,
           },
         },
         Chatbot: 'chatbot',
@@ -423,59 +463,52 @@ export default function AppNavigator() {
     <NavigationContainer linking={linking}>
       <Stack.Navigator
         initialRouteName={initialRoute}
-        screenOptions={{
-          headerShown: false,
-        }}
+        screenOptions={{ headerShown: false }}
       >
+        {/*
+          MainTabNavigator contains FloatingChatbotWrapper inside its View.
+          The chatbot shows on all tabs EXCEPT Scan (filtered in FloatingChatbot.tsx).
+          Stack screens like About / History / Admin / Chatbot do NOT show the
+          floating chatbot — correct UX since they are outside MainTabNavigator.
+        */}
         <Stack.Screen name="MainTabs" component={MainTabNavigator} />
-        <Stack.Screen 
-          name="AuthScreen" 
+        <Stack.Screen
+          name="AuthScreen"
           component={AuthScreen}
-          options={{
-            presentation: 'modal',
-          }}
+          options={{ presentation: 'modal' }}
         />
-        <Stack.Screen 
-          name="VerifyEmail" 
+        <Stack.Screen
+          name="VerifyEmail"
           component={VerifyEmailScreen}
-          options={{
-            presentation: 'card',
-            headerShown: false,
-          }}
+          options={{ presentation: 'card', headerShown: false }}
         />
-        <Stack.Screen 
-          name="Chatbot" 
+        {/* <Stack.Screen
+          name="Chatbot"
           component={ChatbotScreen}
-          options={{
-            presentation: 'card', 
-            headerShown: false, 
-          }}
-        />
-        <Stack.Screen 
-          name="About" 
+          options={{ presentation: 'card', headerShown: false }}
+        /> */}
+        <Stack.Screen
+          name="About"
           component={AboutScreen}
           options={({ navigation }) => ({
-            presentation: 'card', 
+            presentation: 'card',
             headerShown: true,
             header: () => <CustomHeader navigation={navigation} />,
           })}
         />
-        <Stack.Screen 
-          name="History" 
+        <Stack.Screen
+          name="History"
           component={HistoryScreen}
           options={({ navigation }) => ({
-            presentation: 'card', 
+            presentation: 'card',
             headerShown: true,
             header: () => <CustomHeader navigation={navigation} />,
           })}
         />
-        <Stack.Screen 
-          name="Admin" 
+        <Stack.Screen
+          name="Admin"
           component={AdminNavigator}
-          options={{
-            presentation: 'card', 
-            headerShown: false, 
-          }}
+          options={{ presentation: 'card', headerShown: false }}
         />
         <Stack.Screen
           name="ProductDetail"
@@ -490,6 +523,10 @@ export default function AppNavigator() {
     </NavigationContainer>
   );
 }
+
+// ==========================================
+// STYLES
+// ==========================================
 
 const styles = StyleSheet.create({
   scanButtonContainer: {

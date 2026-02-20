@@ -49,6 +49,9 @@ const leavesApi = {
       console.log('📤 Sending to backend...');
       const response = await fetch(`${API_URL}/api/leaves/predict`, {
         method: 'POST',
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+        },
         body: formData,
       });
 
@@ -75,7 +78,9 @@ const leavesApi = {
 
   checkHealth: async (): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_URL}/api/leaves/health`);
+      const response = await fetch(`${API_URL}/api/leaves/health`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+      });
       const data = await response.json();
       console.log('🏥 Leaves API health:', data);
       return data.status === 'ok' && data.model_loaded === true;

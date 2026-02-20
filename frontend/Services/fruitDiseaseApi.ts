@@ -35,6 +35,7 @@ const checkHealth = async (): Promise<boolean> => {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
       },
     });
 
@@ -78,6 +79,9 @@ const predictFruitDisease = async (imageUri: string): Promise<FruitDiseaseResult
     console.log('📤 Sending to backend...');
     const response = await fetch(`${API_URL}/api/fruitdisease/predict`, {
       method: 'POST',
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      },
       body: formData,
     });
 

@@ -210,7 +210,9 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     const fetchRecentPosts = async () => {
       try {
-        const response = await fetch(`${BASE_URL}/api/forum`);
+        const response = await fetch(`${BASE_URL}/api/forum`, {
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+        });
         if (response.ok) {
           const data: ForumPost[] = await response.json();
           // Get 5 most recent posts (not archived)

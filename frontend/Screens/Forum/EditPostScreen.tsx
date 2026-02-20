@@ -241,6 +241,7 @@ const EditPostScreen: React.FC<Props> = ({ navigation, route }) => {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
         body: formData,
       });

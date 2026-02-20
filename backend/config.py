@@ -22,7 +22,7 @@ class Config:
     CLOUDINARY_API_SECRET = os.getenv('CLOUDINARY_API_SECRET')
     
     # Server Configuration
-    PORT = int(os.getenv('PORT', 8081))
+    PORT = int(os.getenv('PORT', 5000))
     DEBUG = os.getenv('NODE_ENV', 'development') == 'development'
     
     # File Upload Configuration

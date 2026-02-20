@@ -62,7 +62,7 @@ frontend/.env
 # generated native folders
 frontend/ios/
 frontend/android/
-frontend/config/api.ts
+frontend/config/
 frontend/Firebase/firebase.ts
 
 # Backend specific

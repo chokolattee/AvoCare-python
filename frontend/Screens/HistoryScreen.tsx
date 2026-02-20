@@ -227,7 +227,10 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
         : `${HISTORY_URL}/${selectedCategory}`;
 
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
+        },
       });
 
       if (res.status === 401) {
@@ -285,7 +288,10 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
               const token = await AsyncStorage.getItem('jwt') || await AsyncStorage.getItem('token');
               const res = await fetch(`${HISTORY_URL}/${analysisId}`, {
                 method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` },
+                headers: { 
+                  Authorization: `Bearer ${token}`,
+                  'ngrok-skip-browser-warning': 'true',
+                },
               });
               if (!res.ok) throw new Error('Failed to delete analysis');
               await fetchAnalyses();

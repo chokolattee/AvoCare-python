@@ -139,6 +139,7 @@ const ProfileScreen: React.FC = () => {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
         },
         body: formData,
       });
@@ -192,6 +193,7 @@ const ProfileScreen: React.FC = () => {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
         },
         body: formData,
       });

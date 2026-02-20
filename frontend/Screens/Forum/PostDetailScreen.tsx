@@ -333,6 +333,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                 method: 'DELETE',
                 headers: {
                   Authorization: `Bearer ${token}`,
+                  'ngrok-skip-browser-warning': 'true',
                 },
               });
 
@@ -382,6 +383,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
       });
       const data = await res.json();
@@ -432,6 +434,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({ 
           content: commentText.trim(),
@@ -482,6 +485,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({ content: editCommentText.trim() }),
       });
@@ -560,6 +564,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
       });
 
@@ -606,6 +611,7 @@ const PostDetailScreen: React.FC<Props> = ({ navigation, route }) => {
               method: 'DELETE',
               headers: {
                 Authorization: `Bearer ${token}`,
+                'ngrok-skip-browser-warning': 'true',
               },
             });
 

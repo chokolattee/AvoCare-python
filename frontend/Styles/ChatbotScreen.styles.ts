@@ -3,13 +3,29 @@ import { StyleSheet, Dimensions, Platform } from 'react-native';
 const { width } = Dimensions.get('window');
 
 export const styles = StyleSheet.create({
+  // Root wrapper — on web we must constrain to viewport height so the
+  // inner ScrollView has a bounded parent and can actually scroll.
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+    ...(Platform.OS === 'web'
+      ? ({
+          height: '100vh',
+          maxHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        } as any)
+      : {}),
   },
+
+  // KeyboardAvoidingView — must not shrink so scroll area gets remaining space
   flex1: {
     flex: 1,
+    ...(Platform.OS === 'web' ? ({ minHeight: 0 } as any) : {}),
   },
+
+  // Header — must not shrink
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -22,6 +38,7 @@ export const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
+    ...(Platform.OS === 'web' ? ({ flexShrink: 0 } as any) : {}),
   },
   backButton: {
     padding: 4,
@@ -58,11 +75,14 @@ export const styles = StyleSheet.create({
     padding: 4,
     marginLeft: 8,
   },
+
+  // Quick Questions — must not shrink
   quickQuestionsSection: {
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e8e8e8',
     paddingVertical: 10,
+    ...(Platform.OS === 'web' ? ({ flexShrink: 0 } as any) : {}),
   },
   quickQuestionsTitle: {
     fontSize: 13,
@@ -95,8 +115,18 @@ export const styles = StyleSheet.create({
     fontWeight: '500',
     flexShrink: 1,
   },
+
+  // Chat Messages ScrollView — fills remaining height and scrolls on web
   messagesContainer: {
     flex: 1,
+    ...(Platform.OS === 'web'
+      ? ({
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          minHeight: 0,
+        } as any)
+      : {}),
   },
   messagesContent: {
     paddingHorizontal: 12,
@@ -204,6 +234,8 @@ export const styles = StyleSheet.create({
     backgroundColor: '#5d873e',
     marginHorizontal: 3,
   },
+
+  // Input Area — must not shrink
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -217,6 +249,7 @@ export const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    ...(Platform.OS === 'web' ? ({ flexShrink: 0 } as any) : {}),
   },
   messageInput: {
     flex: 1,

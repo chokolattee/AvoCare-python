@@ -50,6 +50,10 @@ interface Suggestion {
   icon: string;
 }
 
+// On web, SafeAreaView renders as a plain div without height constraints,
+// which prevents the inner ScrollView from scrolling. Use View on web instead.
+const RootContainer = Platform.OS === 'web' ? View : SafeAreaView;
+
 // Animated Typing Indicator Component
 const TypingIndicator: React.FC = () => {
   const dot1 = useRef(new Animated.Value(0)).current;
@@ -160,8 +164,9 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
 
   const fetchSuggestions = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/api/chatbot/suggestions`);
-      
+      const response = await fetch(`${BASE_URL}/api/chatbot/suggestions`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+      });
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.suggestions) {
@@ -182,6 +187,7 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
           message: message,
@@ -196,32 +202,32 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
       if (response.ok && data.success && data.response) {
         return { text: data.response, isError: false };
       } else {
-        return { 
-          text: data.error || 'Sorry, I couldn\'t process that. Please try again.', 
-          isError: true 
+        return {
+          text: data.error || 'Sorry, I couldn\'t process that. Please try again.',
+          isError: true,
         };
       }
     } catch (error) {
       console.error('Backend API error:', error);
-      
+
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          return { 
-            text: 'Request timed out. Please check your connection and try again.', 
-            isError: true 
+          return {
+            text: 'Request timed out. Please check your connection and try again.',
+            isError: true,
           };
         }
         if (error.message.includes('Network request failed')) {
-          return { 
-            text: 'Cannot connect to server. Please check your internet connection.', 
-            isError: true 
+          return {
+            text: 'Cannot connect to server. Please check your internet connection.',
+            isError: true,
           };
         }
       }
-      
-      return { 
-        text: 'An error occurred. Please try again.', 
-        isError: true 
+
+      return {
+        text: 'An error occurred. Please try again.',
+        isError: true,
       };
     }
   };
@@ -274,10 +280,7 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
       'Clear Chat',
       'Are you sure you want to clear all messages?',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear',
           style: 'destructive',
@@ -296,12 +299,12 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  const displayQuestions = suggestions.length > 0 
+  const displayQuestions = suggestions.length > 0
     ? suggestions.map(s => s.question)
     : defaultQuestions;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <RootContainer style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -310,7 +313,7 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        
+
         <View style={styles.headerCenter}>
           <View style={styles.avatarContainer}>
             <Ionicons name="leaf" size={24} color="#fff" />
@@ -351,11 +354,12 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
         </ScrollView>
       </View>
 
-      {/* Main Chat Area with proper KeyboardAvoidingView */}
+      {/* Main Chat Area */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.flex1}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        enabled={Platform.OS !== 'web'}
       >
         {/* Chat Messages */}
         <ScrollView
@@ -381,10 +385,10 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
               >
                 {!message.isUser && (
                   <View style={[styles.botAvatar, message.isError && styles.errorAvatar]}>
-                    <Ionicons 
-                      name={message.isError ? "alert-circle" : "leaf"} 
-                      size={16} 
-                      color={message.isError ? "#d32f2f" : "#5d873e"} 
+                    <Ionicons
+                      name={message.isError ? 'alert-circle' : 'leaf'}
+                      size={16}
+                      color={message.isError ? '#d32f2f' : '#5d873e'}
                     />
                   </View>
                 )}
@@ -420,7 +424,7 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
               </View>
             </View>
           ))}
-          
+
           {/* Typing Indicator */}
           {isTyping && (
             <View style={[styles.messageWrapper, styles.botMessageWrapper]}>
@@ -470,7 +474,7 @@ const ChatbotScreen: React.FC<Props> = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </RootContainer>
   );
 };
 
