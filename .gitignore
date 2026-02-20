@@ -129,4 +129,10 @@ backend/train_model/models_avocado-detect/
 backend/train_model/results_avocado-detect
 backend/train_model/final_model
 
+
+# YOLO model files
+backend/train_model/*.pt
+backend/train_model/yolov8n.pt
+backend/train_model/yolov8*.pt
+
 package.json.MUUESiBpusxT8xYKYuidpJ8_wYP_DiLrvKdzlfJlN-A
