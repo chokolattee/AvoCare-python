@@ -62,7 +62,6 @@ frontend/.env
 # generated native folders
 frontend/ios/
 frontend/android/
-frontend/config/
 frontend/Firebase/firebase.ts
 
 # Backend specific
@@ -128,6 +127,7 @@ backend/train_model/result_avocado
 backend/train_model/models_avocado-detect/
 backend/train_model/results_avocado-detect
 backend/train_model/final_model
+backend/train_model 
 
 
 # YOLO model files
